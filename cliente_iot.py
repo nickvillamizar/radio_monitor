@@ -11,7 +11,7 @@ def cargar_config():
     if not os.path.exists(CONFIG_PATH):
         print("⚙ No se encontró config_cliente.json, creando archivo nuevo con valores por defecto...")
         config = {
-            "HOST": "10.253.30.118",
+            "HOST": "127.0.0.1",
             "PORT": 5000,
             "BUFFER_SIZE": 4096
         }

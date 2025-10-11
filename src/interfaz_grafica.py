@@ -15,6 +15,10 @@ from tkcalendar import DateEntry
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from sklearn.decomposition import PCA
+import threading
+import socket
+import json
+import os
 
 
 class ToolTip:
@@ -429,52 +433,50 @@ class Aplicacion(tk.Tk):
             lbl.grid(row=r, column=c, sticky="w", padx=15, pady=2)
             self.meta_labels[key] = lbl
             ToolTip(lbl, f"Muestra el valor de '{key}' de la sesión seleccionada")
-
     # ——— Bloque 2.3 EXTENDIDO (metales contaminantes) ———
     def query_sessions(self):
         """
-        Ejecuta la consulta con filtros (umbral, ID, fechas, dispositivo)
-        y añade el estado y nivel de contaminación usando classification_group
-        y contamination_level.
+        Ejecuta la consulta con filtros (ID, fechas, dispositivo)
+        y actualiza la tabla con colores y estados legibles.
         """
-        print("[DEBUG] query_sessions() invoked")
+        log.debug("query_sessions() invoked")
 
-        # 1) Validar ID de sesión
+        # 1) Filtro por ID de sesión
         sid_text = self.id_entry.get().strip()
         try:
             session_id = int(sid_text) if sid_text else None
         except ValueError:
-            print(f"[DEBUG] ID inválido: '{sid_text}' – ignoro filtro de ID.")
+            log.debug(f"ID inválido: '{sid_text}' – ignorando filtro de ID.")
             session_id = None
 
-        # 2) Preparar parámetros: [fecha_inicio, fecha_fin, [session_id], [device]]
-        params = [
-            self.date_start.get_date().strftime("%Y-%m-%d"),
-            self.date_end.get_date().strftime("%Y-%m-%d"),
-        ]
-        if session_id is not None:
-            params.append(session_id)
+        # 2) Fechas y filtros de dispositivo
+        start_date = self.date_start.get_date().strftime("%Y-%m-%d")
+        end_date = self.date_end.get_date().strftime("%Y-%m-%d")
 
         device = self.device_combobox.get()
         use_device_filter = device and device != "— Todos —"
+
+        params = [start_date, end_date]
+        if session_id is not None:
+            params.append(session_id)
         if use_device_filter:
             params.append(device)
 
-        # 3) Consulta SQL corregida: ya no usa ppm_estimations
+        # 3) Consulta SQL principal
         sql = """
             SELECT
               s.id,
               s.filename,
-              s.loaded_at::date    AS fecha,
-              m.device_serial      AS dispositivo,
-              m.curve_count        AS curvas,
-              CASE m.classification_group
-                WHEN 1 THEN '⚠️ CONTAMINADA'
-                WHEN 2 THEN '🟡 ANÓMALA'
+              s.loaded_at::date AS fecha,
+              m.device_serial AS dispositivo,
+              m.curve_count AS curvas,
+              CASE
+                WHEN m.classification_group = 1 THEN '⚠️ CONTAMINADA'
+                WHEN m.classification_group = 2 THEN '🟡 ANÓMALA'
                 ELSE '✅ SEGURA'
-              END                    AS estado,
-              ROUND(m.contamination_level::numeric, 2) AS max_ppm,
-              m.title               AS contaminantes
+              END AS estado,
+              COALESCE(ROUND(m.contamination_level::numeric, 2), 0) AS max_ppm,
+              m.title AS contaminantes
             FROM sessions s
             JOIN measurements m
               ON s.id = m.session_id
@@ -485,14 +487,12 @@ class Aplicacion(tk.Tk):
         if use_device_filter:
             sql += "  AND m.device_serial = %s\n"
 
-        sql += """
-            ORDER BY s.loaded_at DESC
-        """
+        sql += "ORDER BY s.loaded_at DESC"
 
-        print(f"[DEBUG] Params tuple: {params}")
-        print(f"[DEBUG] SQL:\n{sql}")
+        log.debug(f"Params tuple: {params}")
+        log.debug(f"SQL:\n{sql}")
 
-        # 4) Ejecutar y poblar
+        # 4) Ejecutar la consulta
         try:
             conn = pg8000.connect(**DB_CONFIG)
             cur = conn.cursor()
@@ -500,77 +500,38 @@ class Aplicacion(tk.Tk):
             rows = cur.fetchall()
             conn.close()
         except Exception as e:
-            print(f"[DEBUG] Error al ejecutar SQL: {e}")
+            log.error(f"Error en query_sessions: {e}")
             messagebox.showerror("Error en consulta", f"No se pudo ejecutar la consulta:\n{e}")
             return
 
         # 5) Limpiar y poblar la tabla
         self.tree.delete(*self.tree.get_children())
+
         if not rows:
             self.tree.insert("", "end", values=("--", "Sin resultados", "--", "--", "--", "--", "--", "--"))
-        else:
-            for r in rows:
-                tag = "alert" if "CONTAMINADA" in r[5] else "safe"
-                self.tree.insert("", "end", values=r, tags=(tag,))
-            first = self.tree.get_children()[0]
-            self.tree.selection_set(first)
-            self.on_session_select()
+            return
 
-        # 6) Refrescar estadísticas
+        for r in rows:
+            estado_texto = str(r[5]).upper()
+            if "CONTAMINADA" in estado_texto:
+                tag = "alert"
+            elif "ANÓMALA" in estado_texto:
+                tag = "warning"
+            else:
+                tag = "safe"
+
+            self.tree.insert("", "end", values=r, tags=(tag,))
+
+        # 6) Estilos visuales
+        self.tree.tag_configure("alert", background="#ffebee", foreground="#c62828")    # rojo claro
+        self.tree.tag_configure("warning", background="#fff9c4", foreground="#f57f17")  # amarillo claro
+        self.tree.tag_configure("safe", background="#e8f5e9", foreground="#2e7d32")     # verde claro
+
+        log.debug(f"✅ {len(rows)} filas actualizadas en la tabla de resultados")
+
+        # 7) Refrescar estadísticas
         self.update_overview()
 
-    # ——— Bloque 2.4 ———
-    def on_session_select(self, event=None):
-        """
-        Al seleccionar una fila de la tabla, carga y muestra información técnica de la sesión.
-        Solo usa los campos disponibles en la tabla sessions:
-          scan_rate, start_potential, end_potential, software_version.
-        """
-        print("[DEBUG] on_session_select() invoked")
-        sel = self.tree.selection()
-        if not sel:
-            print("[DEBUG] on_session_select: nada seleccionado")
-            return
-        values = self.tree.item(sel[0])["values"]
-        if not values or values[0] == "--":
-            print("[DEBUG] on_session_select: fila vacía")
-            return
-        sid = values[0]
-        print(f"[DEBUG] on_session_select: SID = {sid}")
-
-        try:
-            conn = pg8000.connect(**DB_CONFIG)
-            cur = conn.cursor()
-            cur.execute(
-                """
-                SELECT scan_rate, start_potential, end_potential, software_version
-                FROM sessions
-                WHERE id = %s
-            """,
-                (sid,),
-            )
-            datos = cur.fetchone()
-            conn.close()
-
-            if datos:
-                meta_values = {
-                    "scan_rate": f"Velocidad de Escaneo: {datos[0] if datos[0] is not None else '--'}",
-                    "start_potential": f"Potencial Inicial: {datos[1] if datos[1] is not None else '--'}",
-                    "end_potential": f"Potencial Final: {datos[2] if datos[2] is not None else '--'}",
-                    "software_version": f"Versión Software: {datos[3] if datos[3] is not None else '--'}",
-                }
-                for field, text in meta_values.items():
-                    if field in self.meta_labels:
-                        self.meta_labels[field].config(text=text)
-                print("[DEBUG] on_session_select: metadatos actualizados")
-            else:
-                print("[DEBUG] on_session_select: no hay datos de metadatos")
-                for field, lbl in self.meta_labels.items():
-                    lbl.config(text=f"{field.replace('_', ' ').title()}: --")
-
-        except Exception as e:
-            print(f"[DEBUG] on_session_select Error: {e}")
-            messagebox.showerror("Error", f"Error cargando detalles técnicos:\n{e}")
 
     # ——— Bloque 2.5: load_devices (mejorado) ———
     def load_devices(self):
@@ -809,7 +770,7 @@ class Aplicacion(tk.Tk):
         frame_conf.pack(fill="x", padx=10, pady=10)
 
         ttk.Label(frame_conf, text="IP del servidor remoto:").grid(row=0, column=0, padx=5, sticky="e")
-        self.iot_ip_var = tk.StringVar(value="10.253.30.118")
+        self.iot_ip_var = tk.StringVar(value="")
         ttk.Entry(frame_conf, textvariable=self.iot_ip_var, width=18).grid(row=0, column=1, padx=5)
 
         ttk.Label(frame_conf, text="Puerto:").grid(row=0, column=2, padx=5, sticky="e")
