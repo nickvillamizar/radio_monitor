@@ -790,56 +790,171 @@ class Aplicacion(tk.Tk):
         )
         btn_export_ppm.pack(side="right", padx=10, pady=5)
         ToolTip(btn_export_ppm, "Exporta la tabla de clasificación como CSV")
-            # ——— Bloque: Pestaña “IoT / Comunicación” ———
+     # ——— Bloque: Pestaña “IoT / Comunicación” ———
+         # ——— Bloque: Pestaña “IoT / Comunicación” ———
     def build_iot_tab(self, parent):
         """
-        Crea la pestaña para configuración y envío de archivos al cliente IoT.
-        Permite editar IP, puerto, probar conexión y enviar archivos con barra de progreso.
+        Crea la pestaña para control del servidor IoT, conexión remota y envío de archivos.
+        Permite iniciar/detener servidor, probar conexión y transferir archivos.
         """
         f = ttk.Frame(parent)
         parent.add(f, text="🌐 IoT / Comunicación")
 
-        ttk.Label(f, text="Configuración IoT", font=("Arial", 13, "bold")).pack(pady=10)
+        ttk.Label(f, text="Centro de Control IoT", font=("Arial", 14, "bold")).pack(pady=10)
 
-        # Campos de IP y Puerto
-        frame_conf = ttk.Frame(f)
-        frame_conf.pack(pady=10)
+        # ==============================
+        # CONFIGURACIÓN
+        # ==============================
+        frame_conf = ttk.LabelFrame(f, text="Configuración del Servidor / Cliente")
+        frame_conf.pack(fill="x", padx=10, pady=10)
 
-        ttk.Label(frame_conf, text="IP del servidor:").grid(row=0, column=0, padx=5, sticky="e")
+        ttk.Label(frame_conf, text="IP del servidor remoto:").grid(row=0, column=0, padx=5, sticky="e")
         self.iot_ip_var = tk.StringVar(value="10.253.30.118")
-        ttk.Entry(frame_conf, textvariable=self.iot_ip_var, width=20).grid(row=0, column=1, padx=5)
+        ttk.Entry(frame_conf, textvariable=self.iot_ip_var, width=18).grid(row=0, column=1, padx=5)
 
         ttk.Label(frame_conf, text="Puerto:").grid(row=0, column=2, padx=5, sticky="e")
         self.iot_port_var = tk.IntVar(value=5000)
         ttk.Entry(frame_conf, textvariable=self.iot_port_var, width=8).grid(row=0, column=3, padx=5)
 
-        # Botones
-        btns = ttk.Frame(f)
-        btns.pack(pady=10)
-        ttk.Button(btns, text="🔌 Probar conexión", command=self.test_iot_connection).pack(side="left", padx=5)
-        ttk.Button(btns, text="📤 Enviar archivo", command=self.send_iot_file).pack(side="left", padx=5)
+        # ==============================
+        # CONTROLES DE SERVIDOR LOCAL
+        # ==============================
+        frame_srv = ttk.LabelFrame(f, text="Servidor IoT Local")
+        frame_srv.pack(fill="x", padx=10, pady=5)
 
-        # Barra de progreso
+        self.server_running = False
+        self.server_thread = None
+
+        ttk.Button(frame_srv, text="🚀 Iniciar Servidor", command=self.start_iot_server).grid(row=0, column=0, padx=5, pady=5)
+        ttk.Button(frame_srv, text="🛑 Detener Servidor", command=self.stop_iot_server).grid(row=0, column=1, padx=5, pady=5)
+
+        # ==============================
+        # FUNCIONES DE CLIENTE
+        # ==============================
+        frame_cli = ttk.LabelFrame(f, text="Cliente IoT (modo remoto)")
+        frame_cli.pack(fill="x", padx=10, pady=5)
+
+        ttk.Button(frame_cli, text="🔌 Probar Conexión", command=self.test_iot_connection).grid(row=0, column=0, padx=5)
+        ttk.Button(frame_cli, text="📤 Enviar Archivo", command=self.send_iot_file).grid(row=0, column=1, padx=5)
+
+        # ==============================
+        # PROGRESO + LOGS
+        # ==============================
         ttk.Label(f, text="Progreso de envío:").pack(pady=(15, 5))
         self.iot_progress = ttk.Progressbar(f, length=500, mode="determinate")
         self.iot_progress.pack(pady=5)
 
-        # Área de logs
-        self.iot_log = tk.Text(f, height=10, bg="#1e272e", fg="white", font=("Courier", 10))
+        self.iot_log = tk.Text(f, height=12, bg="#1e272e", fg="white", font=("Courier", 10))
         self.iot_log.pack(fill="x", padx=10, pady=10)
+        ToolTip(self.iot_log, "Registro detallado de eventos IoT")
 
-        ToolTip(self.iot_progress, "Muestra el progreso de la transferencia de archivos")
-        ToolTip(self.iot_log, "Registro de acciones del módulo IoT")
+        # ==============================
+        # SECCIÓN DE AYUDA
+        # ==============================
+        ttk.Label(f, text="ℹ️ Ayuda rápida:", font=("Arial", 11, "bold")).pack(pady=(10, 2))
+        help_text = (
+            "1️⃣ Para recibir archivos, inicia el servidor en el dispositivo de destino.\n"
+            "2️⃣ En el otro dispositivo, introduce la IP del servidor (ver más abajo).\n"
+            "3️⃣ Usa 'Probar Conexión' para verificar.\n"
+            "4️⃣ Si funciona, selecciona un archivo y presiona 'Enviar Archivo'.\n\n"
+            "💡 Para obtener la IP en el dispositivo servidor (Linux/Mac):\n"
+            "   👉 Ejecuta en la terminal: ip a | grep inet\n"
+            "   Ejemplo: inet 192.168.0.45\n\n"
+            "💡 En Windows:\n"
+            "   👉 Abre CMD y escribe: ipconfig\n"
+            "   Busca 'Dirección IPv4'.\n"
+        )
+        help_label = tk.Text(f, height=8, wrap="word", bg="#2c3e50", fg="#ecf0f1", font=("Arial", 9))
+        help_label.insert("1.0", help_text)
+        help_label.config(state="disabled")
+        help_label.pack(fill="x", padx=15, pady=(0, 10))
 
+    # ==============================
+    # FUNCIONES AUXILIARES IoT
+    # ==============================
     def log_iot(self, msg):
         """Agrega texto a la consola IoT."""
         self.iot_log.insert("end", msg + "\n")
         self.iot_log.see("end")
         log.info("[IoT] " + msg)
 
+    def start_iot_server(self):
+        """Inicia el servidor IoT en un hilo separado."""
+        if self.server_running:
+            self.log_iot("⚠️ El servidor ya está en ejecución.")
+            return
+
+        def server_loop():
+            host = "0.0.0.0"
+            port = self.iot_port_var.get()
+            buffer_size = 4096
+            dest_dir = os.path.join(os.path.dirname(__file__), "..", "archivos_recibidos")
+            os.makedirs(dest_dir, exist_ok=True)
+
+            self.log_iot(f"🌐 Servidor IoT escuchando en {host}:{port}")
+            self.server_running = True
+
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
+                server.bind((host, port))
+                server.listen(5)
+                server.settimeout(1)
+
+                while self.server_running:
+                    try:
+                        conn, addr = server.accept()
+                        self.log_iot(f"📡 Conexión desde {addr}")
+                        with conn:
+                            header_data = b""
+                            while not header_data.endswith(b"\n"):
+                                chunk = conn.recv(1)
+                                if not chunk:
+                                    break
+                                header_data += chunk
+                            if not header_data:
+                                self.log_iot("⚠️ Conexión vacía.")
+                                continue
+
+                            header = json.loads(header_data.decode().strip())
+                            filename = header["filename"]
+                            size = int(header["size"])
+                            checksum = header["checksum"]
+
+                            filepath = os.path.join(dest_dir, filename)
+                            conn.sendall(b"ACK")
+                            with open(filepath, "wb") as f:
+                                total_received = 0
+                                while total_received < size:
+                                    data = conn.recv(buffer_size)
+                                    if not data:
+                                        break
+                                    f.write(data)
+                                    total_received += len(data)
+                            self.log_iot(f"✅ Archivo recibido: {filename} ({total_received/1e6:.2f} MB)")
+                            conn.sendall(b"EOF_OK")
+
+                    except socket.timeout:
+                        continue
+                    except Exception as e:
+                        self.log_iot(f"❌ Error en servidor: {e}")
+                        continue
+
+            self.server_running = False
+            self.log_iot("🛑 Servidor IoT detenido.")
+
+        # Lanzar el hilo
+        self.server_thread = threading.Thread(target=server_loop, daemon=True)
+        self.server_thread.start()
+
+    def stop_iot_server(self):
+        """Detiene el servidor IoT embebido."""
+        if not self.server_running:
+            self.log_iot("⚠️ El servidor no está activo.")
+            return
+        self.server_running = False
+        self.log_iot("🛑 Solicitando apagado del servidor...")
+
     def test_iot_connection(self):
         """Prueba la conexión TCP simple con el servidor IoT."""
-        import socket
         host = self.iot_ip_var.get()
         port = self.iot_port_var.get()
         try:
@@ -853,9 +968,6 @@ class Aplicacion(tk.Tk):
 
     def send_iot_file(self):
         """Permite seleccionar un archivo y enviarlo al servidor IoT."""
-        import socket, json, os, hashlib
-        from tqdm import tqdm
-
         filepath = filedialog.askopenfilename(title="Seleccionar archivo para enviar")
         if not filepath:
             return
@@ -864,6 +976,8 @@ class Aplicacion(tk.Tk):
         port = self.iot_port_var.get()
         size = os.path.getsize(filepath)
         filename = os.path.basename(filepath)
+
+        import hashlib
         checksum = hashlib.sha256(open(filepath, "rb").read()).hexdigest()
 
         header = json.dumps({
@@ -898,6 +1012,8 @@ class Aplicacion(tk.Tk):
         except Exception as e:
             self.log_iot(f"❌ Error de envío: {e}")
             messagebox.showerror("Error", str(e))
+
+
 
 
 
