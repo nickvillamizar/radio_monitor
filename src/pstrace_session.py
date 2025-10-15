@@ -221,63 +221,57 @@ def cargar_y_configurar_metodo_load(dll_path):
 
 def procesar_ciclos_voltametricos(curves):
     """
-    Procesamiento avanzado de ciclos voltamétricos según especificaciones
-    Implementa la metodología exacta: eliminar ciclo 1, promediar ciclos 2-5
-    
+    Procesamiento avanzado de ciclos voltamétricos según especificaciones.
+    Nueva metodología: se elimina el ciclo 1 y se toma únicamente el tercer ciclo
+    para análisis (ya no se promedian ciclos 2–5).
+
     Args:
         curves: Array de curvas voltamétricas
-        
+
     Returns:
-        list: Datos PCA promediados
+        list: Datos del tercer ciclo (corrientes en float) o lista vacía si falla
     """
     try:
+        # Importaciones locales por seguridad (no dependen del scope global)
+        import traceback
+
         # Convertir a lista para manejo uniforme
         arr_curves = list(curves)
         total_ciclos = len(arr_curves)
-        
+
         log.info("📊 Procesando %d ciclos voltamétricos", total_ciclos)
-        
+
         # Validar cantidad mínima de ciclos
-        if total_ciclos < 5:
-            log.warning("⚠ Cantidad insuficiente de ciclos: %d (mínimo: 5)", total_ciclos)
+        if total_ciclos < 3:
+            log.warning("⚠ Cantidad insuficiente de ciclos: %d (mínimo: 3)", total_ciclos)
             return []
-        
-        # Seleccionar ciclos 2-5 (índices 1-4)
-        ciclos_seleccionados = arr_curves[1:5]
-        log.info("✓ Ciclos seleccionados para PCA: 2, 3, 4, 5")
-        
-        # Extraer valores Y (corrientes) de cada ciclo
-        matriz_corrientes = []
-        expected_len = None
-        for i, ciclo in enumerate(ciclos_seleccionados, 2):
-            try:
-                corrientes = [float(y) for y in ciclo.GetYValues()]
-                if expected_len is None:
-                    expected_len = len(corrientes)
-                elif len(corrientes) != expected_len:
-                    log.warning("⚠ Ciclo %d tiene longitud distinta (%d vs %d)", i, len(corrientes), expected_len)
-                matriz_corrientes.append(corrientes)
-                log.debug("  Ciclo %d: %d puntos de corriente extraídos", i, len(corrientes))
-            except Exception as e:
-                log.error("✗ Error extrayendo datos del ciclo %d: %s", i, str(e))
-        
-        # Calcular promedio por columna (transponer y promediar)
-        if matriz_corrientes:
-            # zip trunca al más corto → mejor usar zip_longest si quieres conservar todo
-            from itertools import zip_longest
-            promedios_pca = [
-                sum(filter(None, col))/len([v for v in col if v is not None])
-                for col in zip_longest(*matriz_corrientes, fillvalue=None)
-            ]
-            log.info("✓ PCA calculado: %d puntos promediados", len(promedios_pca))
-            return promedios_pca
-        else:
-            log.warning("⚠ No se pudieron extraer datos de corriente")
+
+        # Seleccionar únicamente el tercer ciclo (índice 2)
+        tercer_ciclo = arr_curves[2]
+        log.info("✓ Ciclo seleccionado para análisis: 3")
+
+        # Extraer valores Y (corrientes) del tercer ciclo
+        try:
+            corrientes = [float(y) for y in tercer_ciclo.GetYValues()]
+            log.debug("  Ciclo 3: %d puntos de corriente extraídos", len(corrientes))
+        except Exception as e:
+            log.error("✗ Error extrayendo datos del ciclo 3: %s", str(e))
             return []
-            
+
+        # Retornar directamente los valores del tercer ciclo
+        log.info("✓ Procesamiento completado: %d puntos obtenidos del ciclo 3", len(corrientes))
+        return corrientes
+
     except Exception as e:
-        log.error("✗ Error en procesamiento de ciclos: %s", traceback.format_exc())
+        # Manejo de errores global con traceback
+        try:
+            import traceback as _tb
+            log.error("✗ Error en procesamiento de ciclos: %s", _tb.format_exc())
+        except Exception:
+            log.error("✗ Error en procesamiento de ciclos: %s", str(e))
         return []
+    
+
 
 # ===================================================================================
 # BLOQUE 7: ESTIMACIÓN DE CONCENTRACIONES PPM (VERSIÓN NORMA JSON/0639)
@@ -288,12 +282,12 @@ def calcular_estimaciones_ppm(datos_pca, limites_ppm):
     Calcula estimaciones de concentración PPM basadas en los límites oficiales
     definidos en el archivo JSON.
     
-    - Usa el valor máximo del PCA como indicador de contaminación
+    - Usa los valores PCA como indicadores de contaminación
     - Compara contra cada metal definido en limites_ppm
     - Devuelve un diccionario {metal: porcentaje_del_límite, ..., "clasificacion": str}
     
     Args:
-        datos_pca (list): Datos PCA procesados
+        datos_pca (list): Datos PCA procesados (valores numéricos representativos)
         limites_ppm (dict): Límites legales de metales (ej. {"Cd":0.1,"Zn":3.0,...})
         
     Returns:
@@ -306,39 +300,236 @@ def calcular_estimaciones_ppm(datos_pca, limites_ppm):
         return {}
 
     try:
-        # 1. Valor representativo (máximo del PCA)
+        # 1. Valor representativo: se toma el máximo del PCA como referencia
         valor_pico = max(datos_pca)
         log.info("🔎 Valor pico PCA usado para estimación: %.4f", valor_pico)
 
         # 2. Calcular porcentaje del límite legal para cada metal
         resultados = {}
         clasificacion = "SEGURA"  # valor inicial
+        max_superacion = 0        # para determinar la clasificación global
 
         for metal in ["Cd", "Zn", "Cu", "Cr", "Ni"]:
             limite = limites_ppm.get(metal)
             if limite and limite > 0:
+                # Calcular porcentaje de superación respecto al límite
                 porcentaje = (valor_pico / limite) * 100
                 resultados[metal] = porcentaje
                 log.debug("  %s: %.2f %% del límite (%.3f ppm)", metal, porcentaje, limite)
 
-                # Evaluar clasificación
-                if porcentaje > 120:
-                    clasificacion = "CONTAMINADA"
-                elif porcentaje >= 100 and clasificacion != "CONTAMINADA":
-                    clasificacion = "ANÓMALA"
+                # Guardar el máximo porcentaje de superación
+                if porcentaje > max_superacion:
+                    max_superacion = porcentaje
             else:
                 resultados[metal] = None
                 log.warning("⚠ Límite no válido o ausente para %s en JSON", metal)
 
-        # 3. Añadir clasificación global
+        # 3. Determinar clasificación global en función del máximo porcentaje
+        if max_superacion >= 120:
+            clasificacion = "CONTAMINADA"
+        elif max_superacion >= 100:
+            clasificacion = "ANÓMALA"
+        elif max_superacion >= 80:
+            clasificacion = "EN ATENCIÓN"
+        else:
+            clasificacion = "SEGURA"
+
         resultados["clasificacion"] = clasificacion
-        log.info("🏷 Clasificación global del agua: %s", clasificacion)
+        log.info("🏷 Clasificación global del agua: %s (%.2f%% máx. superación)", clasificacion, max_superacion)
 
         return resultados
 
     except Exception:
         log.error("✗ Error calculando estimaciones PPM: %s", traceback.format_exc())
         return {}
+
+
+
+# ===================================================================================
+# BLOQUE 7.5: SISTEMA DE CLASIFICACIÓN AVANZADO
+# ===================================================================================
+
+class WaterClassifier:
+    """
+    Sistema avanzado de clasificación de muestras de agua basado en análisis PCA
+    y técnicas quimiométricas.
+    
+    Atributos:
+        pca (PCA): Modelo PCA configurado para 2 componentes principales
+        threshold (float): Umbral de clasificación para contaminación
+        confidence_levels (dict): Niveles de confianza para clasificación
+    """
+    
+    def __init__(self, n_components=2, threshold=0.5):
+        """
+        Inicializa el clasificador con parámetros configurables.
+        
+        Args:
+            n_components (int): Número de componentes PCA a utilizar
+            threshold (float): Umbral para clasificación de contaminación
+        """
+        try:
+            from sklearn.decomposition import PCA
+            import numpy as np
+            
+            self.pca = PCA(n_components=n_components)
+            self.threshold = threshold
+            self.np = np  # Guardar referencia a numpy
+            
+            self.confidence_levels = {
+                "ALTA": 0.85,
+                "MEDIA": 0.65,
+                "BAJA": 0.50
+            }
+            
+            log.info("✓ Clasificador inicializado: componentes=%d, umbral=%.2f",
+                    n_components, threshold)
+            
+        except ImportError as e:
+            log.error("✗ Error importando dependencias del clasificador: %s", str(e))
+            raise
+    
+    def _preprocess_data(self, voltammetric_data):
+        """
+        Preprocesa los datos voltamétricos para análisis PCA.
+        
+        Args:
+            voltammetric_data (list/array): Datos crudos de voltametría
+            
+        Returns:
+            array: Datos preprocesados y normalizados
+        """
+        try:
+            # Convertir a array numpy si no lo es
+            data = self.np.array(voltammetric_data)
+            
+            # Remover valores nulos o infinitos
+            data = self.np.nan_to_num(data)
+            
+            # Normalización min-max
+            if data.size > 0:
+                data_min = self.np.min(data)
+                data_max = self.np.max(data)
+                if data_max > data_min:
+                    data = (data - data_min) / (data_max - data_min)
+            
+            return data.reshape(1, -1)  # Reshape para PCA
+            
+        except Exception as e:
+            log.error("✗ Error en preprocesamiento: %s", str(e))
+            return None
+    
+    def _calculate_confidence(self, pca_result):
+        """
+        Calcula el nivel de confianza de la clasificación.
+        
+        Args:
+            pca_result (array): Resultado del análisis PCA
+            
+        Returns:
+            str: Nivel de confianza (ALTA/MEDIA/BAJA)
+        """
+        try:
+            # Calcular distancia al umbral
+            max_value = self.np.max(self.np.abs(pca_result))
+            distance = self.np.abs(max_value - self.threshold)
+            
+            # Determinar nivel de confianza
+            if distance > self.confidence_levels["ALTA"]:
+                return "ALTA"
+            elif distance > self.confidence_levels["MEDIA"]:
+                return "MEDIA"
+            else:
+                return "BAJA"
+                
+        except Exception as e:
+            log.error("✗ Error calculando confianza: %s", str(e))
+            return "DESCONOCIDA"
+    
+    def classify_sample(self, voltammetric_data):
+        """
+        Clasifica una muestra de agua usando técnicas quimiométricas.
+        
+        Args:
+            voltammetric_data (list/array): Datos voltamétricos de la muestra
+            
+        Returns:
+            dict: Resultado de clasificación con formato:
+                {
+                    "classification": str,  # CONTAMINADA/NO CONTAMINADA
+                    "confidence": str,      # ALTA/MEDIA/BAJA
+                    "pca_scores": list     # Scores PCA como lista
+                }
+        """
+        try:
+            # Validar datos de entrada
+            if not voltammetric_data or len(voltammetric_data) == 0:
+                log.warning("⚠ Datos voltamétricos vacíos")
+                return None
+            
+            # Preprocesamiento
+            processed_data = self._preprocess_data(voltammetric_data)
+            if processed_data is None:
+                return None
+            
+            # Análisis PCA
+            pca_result = self.pca.fit_transform(processed_data)
+            max_value = self.np.max(pca_result)
+            
+            # Clasificación basada en límites oficiales del JSON (si disponibles)
+            classification = "NO CONTAMINADA"
+            try:
+                # Intentar cargar límites oficiales
+                with open("limits_ppm.json", "r") as f:
+                    limites_ppm = json.load(f)
+                
+                # Calcular porcentaje de superación máxima respecto a límites
+                max_superacion = 0.0
+                for metal in ["Cd", "Zn", "Cu", "Cr", "Ni"]:
+                    limite = limites_ppm.get(metal)
+                    if limite and limite > 0:
+                        porcentaje = (max_value / float(limite)) * 100.0
+                        if porcentaje > max_superacion:
+                            max_superacion = porcentaje
+                
+                # Determinar clasificación por porcentaje de superación
+                if max_superacion >= 120:
+                    classification = "CONTAMINADA"
+                elif max_superacion >= 100:
+                    classification = "CONTAMINADA"  # anómala pero sobre límite legal
+                elif max_superacion >= 80:
+                    classification = "NO CONTAMINADA"  # en atención pero bajo límite
+                else:
+                    classification = "NO CONTAMINADA"
+                
+                log.info("🏷 Clasificación (JSON): %s (máx. superación: %.2f%%)", classification, max_superacion)
+            
+            except Exception as e:
+                # Fallback a umbral estático si no hay JSON o falla cálculo
+                classification = "CONTAMINADA" if max_value > self.threshold else "NO CONTAMINADA"
+                log.warning("⚠ Uso de umbral estático por fallo en límites JSON: %s", str(e))
+            
+            # Calcular confianza
+            confidence = self._calculate_confidence(pca_result)
+            
+            resultado = {
+                "classification": classification,
+                "confidence": confidence,
+                "pca_scores": pca_result.tolist()
+            }
+            
+            log.info("✓ Muestra clasificada: %s (confianza: %s)",
+                    classification, confidence)
+            
+            return resultado
+            
+        except Exception as e:
+            log.error("✗ Error en clasificación: %s", traceback.format_exc())
+            return None
+
+
+
+
 # ===================================================================================
 # BLOQUE 8: CARGA ROBUSTA DE SESIONES .PSSESSION
 # ===================================================================================
@@ -418,8 +609,9 @@ def generar_csv_matriz_pca_ppm(resultados_mediciones):
         # Construir encabezados dinámicos
         encabezados = ['sensor_id', 'measurement_title']
         encabezados += [f'punto_{i+1}' for i in range(longitud_pca)]  # Puntos PCA
-        # Encabezados fijos para metales
-        encabezados += ['Cd_ppm', 'Zn_ppm', 'Cu_ppm', 'Cr_ppm', 'Ni_ppm']
+        # Encabezados fijos para metales y clasificación
+        encabezados += ['Cd_ppm', 'Zn_ppm', 'Cu_ppm', 'Cr_ppm', 'Ni_ppm',
+                        'contamination_level', 'clasificacion']
         
         # Crear directorio de salida
         directorio_data = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data'))
@@ -442,7 +634,7 @@ def generar_csv_matriz_pca_ppm(resultados_mediciones):
                     resultado.get('title', 'Sin título')
                 ]
                 
-                # Agregar datos PCA
+                # Agregar datos PCA (ciclo 3 ya procesado en Bloque 10)
                 datos_pca = resultado.get('pca_scores', [])
                 fila_datos.extend(datos_pca)
                 
@@ -454,11 +646,15 @@ def generar_csv_matriz_pca_ppm(resultados_mediciones):
                 fila_datos.append(estimaciones_ppm.get('Cr'))
                 fila_datos.append(estimaciones_ppm.get('Ni'))
                 
+                # Agregar nivel de contaminación y clasificación global
+                fila_datos.append(resultado.get('contamination_level', 0))
+                fila_datos.append(resultado.get('clasificacion', 'DESCONOCIDA'))
+                
                 escritor.writerow(fila_datos)
         
         log.info("✓ CSV matriz PCA+PPM generado exitosamente: %s", ruta_csv)
         log.info("  Registros escritos: %d", len(resultados_mediciones))
-        log.info("  Columnas PCA: %d, Columnas PPM: %d", longitud_pca, 5)
+        log.info("  Columnas PCA: %d, Columnas PPM: %d + nivel y clasificación", longitud_pca, 5)
         
         return True
         
@@ -472,27 +668,29 @@ def generar_csv_matriz_pca_ppm(resultados_mediciones):
 
 def extraer_y_procesar_sesion_completa(ruta_archivo, limites_ppm):
     """
-    Función principal que orquesta todo el procesamiento de sesiones .pssession
-    Combina todas las funcionalidades de ambos códigos originales
-    
+    Función principal que orquesta todo el procesamiento de sesiones .pssession.
+    Nueva metodología: se elimina cualquier lógica de promediar ciclos y se toma
+    únicamente el tercer ciclo para el análisis de contaminación, comparando
+    directamente contra los límites regulatorios oficiales cargados desde JSON.
+
     Args:
         ruta_archivo (str): Ruta al archivo .pssession
         limites_ppm (dict): Límites de conversión PPM
-        
+
     Returns:
         dict or None: Diccionario completo con session_info y measurements
     """
     log.info("🚀 Iniciando procesamiento completo de sesión: %s", ruta_archivo)
-    
+
     # Paso 1: Configurar SDK y método de carga
     dll_palmsens = configurar_sdk_palmsens()
     metodo_load = cargar_y_configurar_metodo_load(dll_palmsens)
-    
+
     # Paso 2: Cargar sesión .pssession
     sesion_cargada = cargar_sesion_pssession(metodo_load, ruta_archivo)
     if not sesion_cargada:
         return None
-    
+
     # Paso 3: Extraer información general de la sesión
     informacion_sesion = {
         'session_id': None,
@@ -504,16 +702,16 @@ def extraer_y_procesar_sesion_completa(ruta_archivo, limites_ppm):
         'software_version': getattr(sesion_cargada, 'Version', None),
         'processed_at': datetime.datetime.now().isoformat()
     }
-    
+
     log.info("📋 Información de sesión extraída: %d mediciones", informacion_sesion['total_cycles'])
-    
+
     # Paso 4: Procesar cada medición
     resultados_mediciones = []
-    
+
     for idx, medicion in enumerate(sesion_cargada.Measurements, 1):
         titulo = getattr(medicion, "Title", f"Medición_{idx}")
         log.info("🔬 Procesando medición %d/%d: %s", idx, informacion_sesion['total_cycles'], titulo)
-        
+
         try:
             # Extraer información básica de la medición
             try:
@@ -533,13 +731,14 @@ def extraer_y_procesar_sesion_completa(ruta_archivo, limites_ppm):
                 'device_serial': getattr(medicion, 'DeviceUsedSerial', 'N/A'),
                 'curve_count': getattr(medicion, 'nCurves', 0)
             }
-            
+
             # Obtener array de curvas
             array_curvas = medicion.GetCurveArray()
             if not array_curvas:
                 log.warning("⚠ Medición %d no contiene curvas", idx)
-            
-            # Procesar curvas individuales
+                continue
+
+            # Procesar curvas individuales (todas, para visualización)
             curvas_detalladas = []
             for idx_curva, curva in enumerate(array_curvas):
                 curva_info = {
@@ -548,19 +747,35 @@ def extraer_y_procesar_sesion_completa(ruta_archivo, limites_ppm):
                     'currents': [float(y) for y in curva.GetYValues()]
                 }
                 curvas_detalladas.append(curva_info)
-            
-            # Procesamiento PCA
+
+            # Procesamiento PCA: ahora solo tercer ciclo
             datos_pca = procesar_ciclos_voltametricos(array_curvas)
+            if not datos_pca:
+                log.warning("⚠ No se pudo procesar PCA para medición %d", idx)
+                continue
+
+            # Calcular estimaciones PPM contra límites oficiales
             estimaciones_ppm = calcular_estimaciones_ppm(datos_pca, limites_ppm)
-            
-            # Determinar clasificación y nivel de contaminación
-            clasificacion = estimaciones_ppm.get("clasificacion") if estimaciones_ppm else "DESCONOCIDA"
-            # nivel = máximo porcentaje de los metales
-            nivel_contaminacion = max(
-                (v for k, v in estimaciones_ppm.items() if k in ["Cd", "Zn", "Cu", "Cr", "Ni"] and v is not None),
-                default=0
-            )
-            
+
+            # Determinar nivel de contaminación como % de superación máxima
+            nivel_contaminacion = 0
+            for metal, limite in limites_ppm.items():
+                valor = estimaciones_ppm.get(metal)
+                if valor is not None and limite > 0:
+                    porcentaje = (valor / limite) * 100
+                    if porcentaje > nivel_contaminacion:
+                        nivel_contaminacion = porcentaje
+
+            # Determinar clasificación textual
+            if nivel_contaminacion >= 120:
+                clasificacion = "⚠️ CONTAMINACIÓN SEVERA"
+            elif nivel_contaminacion >= 100:
+                clasificacion = "⚡ CONTAMINACIÓN MODERADA"
+            elif nivel_contaminacion >= 80:
+                clasificacion = "🟡 REQUIERE ATENCIÓN"
+            else:
+                clasificacion = "✅ NIVEL SEGURO"
+
             # Consolidar información completa de la medición
             info_medicion.update({
                 'curves': curvas_detalladas,
@@ -570,15 +785,16 @@ def extraer_y_procesar_sesion_completa(ruta_archivo, limites_ppm):
                 'contamination_level': nivel_contaminacion,
                 'pca_points_count': len(datos_pca) if datos_pca else 0
             })
-            
+
             resultados_mediciones.append(info_medicion)
             log.info("  ✓ Medición procesada: %d curvas, %d puntos PCA, Clasificación=%s, Nivel=%.2f%%",
-                    len(curvas_detalladas), len(datos_pca) if datos_pca else 0, clasificacion, nivel_contaminacion)
-            
+                     len(curvas_detalladas), len(datos_pca) if datos_pca else 0,
+                     clasificacion, nivel_contaminacion)
+
         except Exception as e:
             log.error("  ✗ Error procesando medición %d: %s", idx, str(e))
             continue
-    
+
     # Paso 5: Generar archivo CSV matriz PCA+PPM
     csv_generado = False
     if resultados_mediciones:
@@ -587,7 +803,7 @@ def extraer_y_procesar_sesion_completa(ruta_archivo, limites_ppm):
             log.info("✓ Archivo CSV matriz PCA+PPM generado exitosamente")
         else:
             log.warning("⚠ No se pudo generar el archivo CSV")
-    
+
     # Paso 6: Consolidar resultado final
     resultado_final = {
         'session_info': informacion_sesion,
@@ -598,12 +814,12 @@ def extraer_y_procesar_sesion_completa(ruta_archivo, limites_ppm):
             'csv_generated': csv_generado
         }
     }
-    
+
     log.info("🎯 Procesamiento completado exitosamente")
     log.info("  📊 Mediciones totales: %d", len(resultados_mediciones))
     log.info("  🧮 PCA exitosos: %d", resultado_final['processing_summary']['successful_pca'])
     log.info("=" * 60)
-    
+
     return resultado_final
 
 # ===================================================================================

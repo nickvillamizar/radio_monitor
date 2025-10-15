@@ -83,11 +83,18 @@ DB_CONFIG = {
 COLOR_BG = "#2c3e50"  # Color de fondo
 COLOR_BT = "#3498db"  # Color de botones
 COLOR_FG = "#ffffff"  # Color de fuente
+
 SETTINGS_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "settings.json"))
-DEFAULT_SETTINGS = {"cycles": [2, 3, 4, 5], "ppm_factor": 1.0, "alert_threshold": 0.5}
+
+# Configuración por defecto corregida: ahora solo se usa el tercer ciclo
+DEFAULT_SETTINGS = {
+    "selected_cycle": 3,   # Solo tercer ciclo
+    "ppm_factor": 1.0,
+    "alert_threshold": 0.5
+}
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 log = logging.getLogger()
-
 
 class Aplicacion(tk.Tk):
     """
@@ -283,39 +290,54 @@ class Aplicacion(tk.Tk):
         self.set_default_date_range()
         self.query_sessions()
 
+
     # ——— Bloque 2.2.1 ———
+
     def _create_overview_panel(self, parent):
         """
         Panel superior de estadísticas generales.
         """
         print("[DEBUG] _create_overview_panel() invoked")
+
         frame = ttk.LabelFrame(parent, text="Vista General de Datos")
         frame.pack(fill="x", padx=10, pady=5)
         container = ttk.Frame(frame)
         container.pack(fill="x", padx=10, pady=10)
 
+        # Campos a mostrar en la vista general
         fields = [
             ("total_sessions", "Total de Sesiones: --"),
             ("total_measurements", "Total de Mediciones: --"),
             ("avg_ppm", "PPM Promedio: --"),
             ("max_ppm", "PPM Máximo: --"),
+            ("min_ppm", "PPM Mínimo: --"),   # 🔧 añadido para evitar error y mostrar mínimo
             ("alert_count", "Alertas Activas: --"),
             ("last_update", "Última Actualización: --"),
         ]
+
         self.overview_labels = {}
         for i, (key, text) in enumerate(fields):
             r, c = divmod(i, 3)
             lbl = ttk.Label(container, text=text, font=("Arial", 10))
             lbl.grid(row=r, column=c, sticky="w", padx=20, pady=5)
             self.overview_labels[key] = lbl
+            print(f"[DEBUG] _create_overview_panel: label creado -> {key}")
 
+        # Botón de actualización manual
         ttk.Button(
             container,
             text="🔄 Actualizar",
-            command=lambda: (print("[DEBUG] Click: actualizar vista general"), self.update_overview()),
-        ).grid(row=2, column=0, columnspan=3, pady=10)
+            command=lambda: (
+                print("[DEBUG] Click: actualizar vista general"),
+                self.update_overview()
+            ),
+        ).grid(row=3, column=0, columnspan=3, pady=10)
+
+        print("[DEBUG] _create_overview_panel configurado correctamente con min_ppm incluido")
+
 
     # ——— Bloque 2.2.2 ———
+
     def _create_filters_panel(self, parent):
         """
         Panel de filtros básicos por ID, rango de fechas y dispositivo.
@@ -433,107 +455,140 @@ class Aplicacion(tk.Tk):
             lbl.grid(row=r, column=c, sticky="w", padx=15, pady=2)
             self.meta_labels[key] = lbl
             ToolTip(lbl, f"Muestra el valor de '{key}' de la sesión seleccionada")
+
+
+    # ===================================================================================
     # ——— Bloque 2.3 EXTENDIDO (metales contaminantes) ———
+    # ===================================================================================
+
     def query_sessions(self):
         """
-        Ejecuta la consulta con filtros (ID, fechas, dispositivo)
-        y actualiza la tabla con colores y estados legibles.
+        Ejecuta consulta avanzada que integra límites regulatorios y 
+        clasifica el estado de contaminación según normas oficiales.
+        Ahora se usan directamente los campos clasificacion y ppm_estimations
+        guardados en la BD, evitando recalcular en la GUI.
         """
-        log.debug("query_sessions() invoked")
+        log.debug("🔄 Iniciando query_sessions() mejorado")
 
-        # 1) Filtro por ID de sesión
+        # 1) Cargar límites regulatorios (para tooltips y validaciones)
+        try:
+            with open("limits_ppm.json", "r") as f:
+                limites = json.load(f)
+                log.debug(f"📚 Límites regulatorios cargados: {limites}")
+        except Exception as e:
+            log.error(f"❌ Error cargando limits_ppm.json: {e}")
+            messagebox.showerror("Error", "No se pudieron cargar los límites regulatorios")
+            return
+
+        # 2) Procesar filtros
         sid_text = self.id_entry.get().strip()
         try:
             session_id = int(sid_text) if sid_text else None
         except ValueError:
-            log.debug(f"ID inválido: '{sid_text}' – ignorando filtro de ID.")
+            log.debug(f"⚠️ ID inválido ignorado: '{sid_text}'")
             session_id = None
 
-        # 2) Fechas y filtros de dispositivo
+        # 3) Fechas y dispositivo
         start_date = self.date_start.get_date().strftime("%Y-%m-%d")
         end_date = self.date_end.get_date().strftime("%Y-%m-%d")
-
         device = self.device_combobox.get()
         use_device_filter = device and device != "— Todos —"
 
+        # 4) Parámetros para la consulta
         params = [start_date, end_date]
         if session_id is not None:
             params.append(session_id)
         if use_device_filter:
             params.append(device)
 
-        # 3) Consulta SQL principal
+        # 5) Consulta SQL mejorada con campos nuevos
         sql = """
-            SELECT
-              s.id,
-              s.filename,
-              s.loaded_at::date AS fecha,
-              m.device_serial AS dispositivo,
-              m.curve_count AS curvas,
-              CASE
-                WHEN m.classification_group = 1 THEN '⚠️ CONTAMINADA'
-                WHEN m.classification_group = 2 THEN '🟡 ANÓMALA'
-                ELSE '✅ SEGURA'
-              END AS estado,
-              COALESCE(ROUND(m.contamination_level::numeric, 2), 0) AS max_ppm,
-              m.title AS contaminantes
+            SELECT 
+                s.id,
+                s.filename,
+                s.loaded_at::date AS fecha,
+                m.device_serial AS dispositivo,
+                m.curve_count AS curvas,
+                COALESCE(ROUND(m.contamination_level::numeric, 2), 0) AS nivel_ppm,
+                m.clasificacion,
+                m.ppm_estimations
             FROM sessions s
-            JOIN measurements m
-              ON s.id = m.session_id
+            JOIN measurements m ON s.id = m.session_id
             WHERE s.loaded_at::date BETWEEN %s AND %s
         """
+
+        # 6) Agregar filtros adicionales
         if session_id is not None:
-            sql += "  AND s.id = %s\n"
+            sql += " AND s.id = %s"
         if use_device_filter:
-            sql += "  AND m.device_serial = %s\n"
+            sql += " AND m.device_serial = %s"
 
-        sql += "ORDER BY s.loaded_at DESC"
+        # 7) Completar consulta con ordenamiento
+        sql += " ORDER BY fecha DESC, nivel_ppm DESC"
 
-        log.debug(f"Params tuple: {params}")
-        log.debug(f"SQL:\n{sql}")
-
-        # 4) Ejecutar la consulta
+        # 8) Ejecutar consulta
         try:
             conn = pg8000.connect(**DB_CONFIG)
             cur = conn.cursor()
+            log.debug(f"🔍 Ejecutando consulta con params: {params}")
             cur.execute(sql, tuple(params))
             rows = cur.fetchall()
             conn.close()
+            log.debug(f"✅ Consulta exitosa: {len(rows)} resultados")
         except Exception as e:
-            log.error(f"Error en query_sessions: {e}")
+            log.error(f"❌ Error en consulta: {e}")
             messagebox.showerror("Error en consulta", f"No se pudo ejecutar la consulta:\n{e}")
             return
 
-        # 5) Limpiar y poblar la tabla
+        # 9) Actualizar interfaz
         self.tree.delete(*self.tree.get_children())
 
         if not rows:
-            self.tree.insert("", "end", values=("--", "Sin resultados", "--", "--", "--", "--", "--", "--"))
+            self.tree.insert("", "end", values=("--", "Sin resultados", "--", "--", "--", "0.00", "--", "--"))
             return
 
+        # 10) Poblar tabla usando clasificacion de BD
         for r in rows:
-            estado_texto = str(r[5]).upper()
-            if "CONTAMINADA" in estado_texto:
+            nivel = float(r[5])          # contamination_level
+            clasificacion = r[6] or "--" # clasificacion textual
+            ppm_json = r[7] or {}        # ppm_estimations JSONB
+
+            log.debug(f"📊 Fila BD -> nivel={nivel}, clasificacion={clasificacion}, ppm={ppm_json}")
+
+            # Determinar estilo visual según clasificacion
+            if clasificacion.startswith("⚠️"):
                 tag = "alert"
-            elif "ANÓMALA" in estado_texto:
+                tooltip = f"{clasificacion} (nivel={nivel:.2f}%)"
+            elif clasificacion.startswith("⚡"):
                 tag = "warning"
+                tooltip = f"{clasificacion} (nivel={nivel:.2f}%)"
+            elif clasificacion.startswith("🟡"):
+                tag = "attention"
+                tooltip = f"{clasificacion} (nivel={nivel:.2f}%)"
             else:
                 tag = "safe"
+                tooltip = f"{clasificacion} (nivel={nivel:.2f}%)"
 
-            self.tree.insert("", "end", values=r, tags=(tag,))
+            # Insertar fila con valores reales de BD
+            valores = (r[0], r[1], r[2], r[3], r[4], clasificacion, nivel, json.dumps(ppm_json))
+            item_id = self.tree.insert("", "end", values=valores, tags=(tag,))
+            ToolTip(self.tree, tooltip)
 
-        # 6) Estilos visuales
-        self.tree.tag_configure("alert", background="#ffebee", foreground="#c62828")    # rojo claro
-        self.tree.tag_configure("warning", background="#fff9c4", foreground="#f57f17")  # amarillo claro
-        self.tree.tag_configure("safe", background="#e8f5e9", foreground="#2e7d32")     # verde claro
+        # 11) Configurar estilos visuales
+        self.tree.tag_configure("alert", background="#ffcdd2", foreground="#d32f2f")
+        self.tree.tag_configure("warning", background="#ffe0b2", foreground="#f57c00")
+        self.tree.tag_configure("attention", background="#fff9c4", foreground="#fbc02d")
+        self.tree.tag_configure("safe", background="#c8e6c9", foreground="#2e7d32")
 
-        log.debug(f"✅ {len(rows)} filas actualizadas en la tabla de resultados")
+        log.info(f"📊 Tabla actualizada con {len(rows)} registros")
 
-        # 7) Refrescar estadísticas
+        # 12) Actualizar estadísticas
         self.update_overview()
 
 
+# ===================================================================================
     # ——— Bloque 2.5: load_devices (mejorado) ———
+# ===================================================================================
     def load_devices(self):
         """
         Consulta la base de datos para cargar los seriales de dispositivos
@@ -578,7 +633,11 @@ class Aplicacion(tk.Tk):
             print(f"[DEBUG] load_devices Error: {e}")
             messagebox.showerror("Error BD", f"Error cargando dispositivos:\n{e}")
 
+
+# ===================================================================================
     # ——— Bloque 2.6: update_overview ———
+# ===================================================================================
+
     def update_overview(self):
         """
         Actualiza la vista general mostrando estadísticas globales.
@@ -594,18 +653,21 @@ class Aplicacion(tk.Tk):
             conn = pg8000.connect(**DB_CONFIG)
             cur = conn.cursor()
 
+            # Consultas basadas en contamination_level ya calculado contra JSON
             queries = {
                 "total_sessions": "SELECT COUNT(*) FROM sessions",
                 "total_measurements": "SELECT COUNT(*) FROM measurements",
-                "avg_ppm": "SELECT ROUND(AVG(contamination_level)::numeric, 2) FROM measurements",
-                "max_ppm": "SELECT ROUND(MAX(contamination_level)::numeric, 2) FROM measurements",
-                "alert_count": "SELECT COUNT(*) FROM measurements WHERE contamination_level > %s",
+                "avg_ppm": "SELECT ROUND(AVG(contamination_level)::numeric, 2) FROM measurements WHERE contamination_level IS NOT NULL",
+                "max_ppm": "SELECT ROUND(MAX(contamination_level)::numeric, 2) FROM measurements WHERE contamination_level IS NOT NULL",
+                "min_ppm": "SELECT ROUND(MIN(contamination_level)::numeric, 2) FROM measurements WHERE contamination_level IS NOT NULL",
+                "alert_count": "SELECT COUNT(*) FROM measurements WHERE contamination_level >= %s",
                 "last_update": "SELECT MAX(loaded_at) FROM sessions",
             }
 
             stats = {}
             for key, sql in queries.items():
                 if key == "alert_count":
+                    # Usar el umbral definido en settings (ej. 100% del límite)
                     cur.execute(sql, (self.settings["alert_threshold"],))
                 else:
                     cur.execute(sql)
@@ -614,14 +676,26 @@ class Aplicacion(tk.Tk):
             conn.close()
             print(f"[DEBUG] update_overview: stats fetched: {stats}")
 
-            # Actualizar labels
-            self.overview_labels["total_sessions"].config(text=f"Total de Sesiones: {stats['total_sessions']}")
+            # Actualizar labels con valores reales
+            self.overview_labels["total_sessions"].config(
+                text=f"Total de Sesiones: {stats['total_sessions']}"
+            )
             self.overview_labels["total_measurements"].config(
                 text=f"Total de Mediciones: {stats['total_measurements']}"
             )
-            self.overview_labels["avg_ppm"].config(text=f"PPM Promedio: {stats['avg_ppm']}")
-            self.overview_labels["max_ppm"].config(text=f"PPM Máximo: {stats['max_ppm']}")
-            self.overview_labels["alert_count"].config(text=f"Alertas Activas: {stats['alert_count']}")
+            self.overview_labels["avg_ppm"].config(
+                text=f"PPM Promedio: {stats['avg_ppm'] if stats['avg_ppm'] is not None else '--'}"
+            )
+            self.overview_labels["max_ppm"].config(
+                text=f"PPM Máximo: {stats['max_ppm'] if stats['max_ppm'] is not None else '--'}"
+            )
+            if "min_ppm" in stats:
+                self.overview_labels["min_ppm"].config(
+                    text=f"PPM Mínimo: {stats['min_ppm'] if stats['min_ppm'] is not None else '--'}"
+                )
+            self.overview_labels["alert_count"].config(
+                text=f"Alertas Activas: {stats['alert_count']}"
+            )
 
             last = stats["last_update"]
             if last:
@@ -661,8 +735,10 @@ class Aplicacion(tk.Tk):
         except Exception as e:
             print(f"[DEBUG] set_default_date_range Error: {e}")
             messagebox.showerror("Error", f"Error estableciendo rango de fechas:\n{e}")
-
+# ===================================================================================
     # ——— Bloque: Pestaña “Detalle Sesión” ———
+# ===================================================================================
+
     def build_detail_tab(self, parent):
         """
         Crea la pestaña 'Detalle Sesión' donde se muestra un área de texto
@@ -676,6 +752,8 @@ class Aplicacion(tk.Tk):
         self.txt_detail = tk.Text(f, wrap="word", bg="#34495e", fg="white", font=("Arial", 10))
         self.txt_detail.pack(fill="both", expand=True, padx=10, pady=10)
         ToolTip(self.txt_detail, "Aquí se muestra la información detallada (JSON) de la sesión seleccionada")
+
+
 
     # ——— Bloque: Pestaña “Curvas” ———
     def build_curve_tab(self, parent):
@@ -716,6 +794,9 @@ class Aplicacion(tk.Tk):
         """
         Configura la pestaña 'ppm' (ahora 'Clasificación') para mostrar
         grupo y nivel de contaminación y permitir su exportación.
+        Los valores que se mostrarán provienen del cálculo con el ciclo 3
+        y se comparan directamente contra los límites oficiales definidos
+        en el archivo JSON.
         """
         f = ttk.Frame(parent)
         parent.add(f, text="🗂 Clasificación")
@@ -727,9 +808,9 @@ class Aplicacion(tk.Tk):
             command=self.show_classification
         )
         btn_show_ppm.pack(pady=8)
-        ToolTip(btn_show_ppm, "Dibuja la clasificación y nivel de contaminación")
+        ToolTip(btn_show_ppm, "Muestra la clasificación global y el nivel de contaminación calculado contra los límites JSON")
 
-        # Reutilizamos self.tree_ppm para la tabla, ahora con dos columnas:
+        # Tabla de clasificación: Grupo (estado) y Nivel (%) de superación
         cols = ("Grupo", "Nivel (%)")
         self.tree_ppm = ttk.Treeview(
             f,
@@ -741,7 +822,7 @@ class Aplicacion(tk.Tk):
             self.tree_ppm.heading(c, text=c)
             self.tree_ppm.column(c, anchor="center")
         self.tree_ppm.pack(fill="both", expand=True, padx=10, pady=10)
-        ToolTip(self.tree_ppm, "Tabla con grupo de clasificación y nivel de contaminación")
+        ToolTip(self.tree_ppm, "Tabla con el estado de clasificación y el porcentaje de superación respecto al límite oficial")
 
         # Botón para exportar la tabla de clasificación
         btn_export_ppm = ttk.Button(
@@ -750,9 +831,49 @@ class Aplicacion(tk.Tk):
             command=self.export_classification
         )
         btn_export_ppm.pack(side="right", padx=10, pady=5)
-        ToolTip(btn_export_ppm, "Exporta la tabla de clasificación como CSV")
+        ToolTip(btn_export_ppm, "Exporta la tabla de clasificación como CSV con valores de ciclo 3 y comparación contra JSON")
+
+
+
+    # ——— Bloque: Exportar Clasificación ———
+    def export_classification(self):
+        """
+        Exporta la tabla de clasificación (ppm) a un archivo CSV.
+        Usa self.ppm_df, que se construye en show_classification/show_ppm,
+        garantizando que los datos exportados correspondan a la comparación
+        contra los límites oficiales definidos en limits_ppm.json.
+
+        Flujo:
+        - Verifica que self.ppm_df exista y no esté vacío.
+        - Abre un diálogo para seleccionar la ruta de guardado.
+        - Exporta el DataFrame a CSV con codificación UTF-8.
+        - Muestra un mensaje de confirmación o error.
+        """
+        if self.ppm_df is None or self.ppm_df.empty:
+            messagebox.showwarning("Exportar", "No hay datos de clasificación para exportar.")
+            print("[DEBUG] export_classification: self.ppm_df vacío o None")
+            return
+
+        path = filedialog.asksaveasfilename(
+            defaultextension=".csv",
+            filetypes=[("CSV", "*.csv")],
+            title="Guardar clasificación como CSV"
+        )
+        if not path:
+            print("[DEBUG] export_classification: guardado cancelado por el usuario")
+            return
+
+        try:
+            self.ppm_df.to_csv(path, index=False, encoding="utf-8-sig")
+            messagebox.showinfo("Exportar", f"Clasificación guardada en {path}")
+            print(f"[DEBUG] export_classification: CSV guardado en {path}")
+        except Exception as e:
+            print(f"[ERROR] export_classification: {e}")
+            messagebox.showerror("Error", f"No se pudo exportar la clasificación:\n{e}")
+
+
      # ——— Bloque: Pestaña “IoT / Comunicación” ———
-         # ——— Bloque: Pestaña “IoT / Comunicación” ———
+
     def build_iot_tab(self, parent):
         """
         Crea la pestaña para control del servidor IoT, conexión remota y envío de archivos.
@@ -1030,6 +1151,7 @@ class Aplicacion(tk.Tk):
         - Extrae los nombres de metales de limits_ppm.json
         - Construye un DataFrame con nombres reales de metales
         - Marca alertas usando umbrales específicos para cada metal
+        - Añade porcentaje de superación y estado por metal
         """
         print("[DEBUG] show_ppm() invoked")
         if self.current_data is None:
@@ -1041,6 +1163,7 @@ class Aplicacion(tk.Tk):
             try:
                 with open("limits_ppm.json", "r") as f:
                     self.limites_ppm = json.load(f)
+                print(f"[DEBUG] Límites cargados: {self.limites_ppm}")
             except Exception as e:
                 print(f"[ERROR] Error cargando límites: {e}")
                 return  # No es posible continuar sin límites
@@ -1059,52 +1182,143 @@ class Aplicacion(tk.Tk):
             )
             .fillna(0)
         )
-        self.ppm_df = df
+
+        # Añadir columnas de % superación y estado por metal
+        for metal in metales:
+            limite = float(self.limites_ppm.get(metal, 0))
+            if limite > 0:
+                df[f"{metal}_%"] = (df[metal] / limite) * 100
+                df[f"{metal}_estado"] = df[metal].apply(
+                    lambda v: "⚠️ EXCEDE" if v >= limite else "✅ SEGURO"
+                )
+            else:
+                df[f"{metal}_%"] = 0
+                df[f"{metal}_estado"] = "N/A"
+
+        self.ppm_df = df  # guardar para exportar CSV
 
         # Configurar columnas del Treeview
-        self.tree_ppm.config(columns=metales)
+        cols = []
         for metal in metales:
-            self.tree_ppm.heading(metal, text=metal)
+            cols.extend([metal, f"{metal}_%", f"{metal}_estado"])
+        self.tree_ppm.config(columns=cols)
+
+        for col in cols:
+            self.tree_ppm.heading(col, text=col)
+
         self.tree_ppm.delete(*self.tree_ppm.get_children())
 
         # Poblar filas y resaltar alertas
         for _, row in df.iterrows():
-            alerta = any(
-                row[metal] > self.limites_ppm.get(metal, float("inf"))
-                for metal in metales
-            )
-            tag = "alert" if alerta else ""
-            self.tree_ppm.insert("", "end", values=list(row), tags=(tag,))
+            valores = []
+            alerta = False
+            for metal in metales:
+                valores.append(row[metal])
+                valores.append(f"{row[f'{metal}_%']:.1f}%")
+                estado = row[f"{metal}_estado"]
+                valores.append(estado)
+                if "EXCEDE" in estado:
+                    alerta = True
 
-        self.tree_ppm.tag_configure("alert", background="#581845", foreground="white")
+            tag = "alert" if alerta else "safe"
+            self.tree_ppm.insert("", "end", values=valores, tags=(tag,))
+
+        # Estilos
+        self.tree_ppm.tag_configure("alert", background="#ffcdd2", foreground="#d32f2f")
+        self.tree_ppm.tag_configure("safe", background="#c8e6c9", foreground="#2e7d32")
+
         ToolTip(
             self.tree_ppm,
-            "Tabla de estimaciones ppm; en rojo los valores que exceden el límite específico"
+            "Tabla de estimaciones ppm; se muestra valor, % de superación y estado por metal.\n"
+            "En rojo los que exceden el límite oficial definido en limits_ppm.json"
         )
+
+        print("[DEBUG] Tabla ppm actualizada correctamente")
 
     # ————— Bloque: Botón “Mostrar Clasificación” —————
     def show_classification(self):
         """
         Invocado por el botón "Mostrar Clasificación".
-        Refresca la tabla de ppm usando show_ppm().
+        Refresca la tabla de ppm comparando contra los límites oficiales del JSON.
+
+        Flujo:
+        - Carga los límites regulatorios desde limits_ppm.json.
+        - Recorre las mediciones actuales (self.current_data).
+        - Para cada metal, compara el valor medido contra su límite oficial.
+        - Construye un DataFrame con columnas detalladas (Metal, Valor, Límite, Estado, Clasificación Global, Nivel).
+        - Reconfigura la tabla tree_ppm para mostrar esas columnas.
+        - Inserta filas con estilos según el estado (seguro o contaminado).
+        - Guarda el DataFrame en self.ppm_df para exportación.
         """
         print("[DEBUG] show_classification() invoked")
-        self.show_ppm()
-    
-        # ————— Bloque: Exportar clasificación (CSV) —————
-    def export_classification(self):
-        """
-        Exporta la tabla de clasificación (ppm) a un archivo CSV.
-        """
-        if self.ppm_df is None:
+
+        # 1) Cargar límites regulatorios
+        try:
+            with open("limits_ppm.json", "r") as f:
+                limites = json.load(f)
+            print(f"[DEBUG] Límites regulatorios cargados: {limites}")
+        except Exception as e:
+            print(f"[ERROR] No se pudieron cargar los límites: {e}")
+            messagebox.showerror("Error", "No se pudieron cargar los límites regulatorios")
             return
-        path = filedialog.asksaveasfilename(
-            defaultextension=".csv",
-            filetypes=[("CSV", "*.csv")]
-        )
-        if path:
-            self.ppm_df.to_csv(path, index=False)
-            messagebox.showinfo("Exportar", f"Guardado en {path}")
+
+        # 2) Validar que haya datos cargados
+        if self.current_data is None or self.current_data.empty:
+            print("[DEBUG] No hay datos en current_data")
+            return
+
+        # 3) Construir DataFrame con comparaciones
+        rows = []
+        for idx, m in self.current_data.iterrows():
+            ppm_vals = m.get("ppm_estimations", {})
+            clasificacion = m.get("clasificacion", "SIN CLASIFICAR")
+            nivel = m.get("contamination_level", 0)
+
+            # Debug detallado
+            print(f"[DEBUG] Medición {idx}: ppm={ppm_vals}, clasificacion={clasificacion}, nivel={nivel}")
+
+            # Comparar cada metal contra su límite
+            for metal, limite in limites.items():
+                valor = ppm_vals.get(metal, 0)
+                estado = "✅ SEGURO" if valor < limite else "⚠️ CONTAMINADO"
+                rows.append({
+                    "Metal": metal,
+                    "Valor (ppm)": valor,
+                    "Límite (ppm)": limite,
+                    "Estado": estado,
+                    "Clasificación Global": clasificacion,
+                    "Nivel (%)": nivel
+                })
+
+        # 4) Reconfigurar columnas de la tabla para que coincidan con los datos
+        cols = ("Metal", "Valor (ppm)", "Límite (ppm)", "Estado", "Clasificación Global", "Nivel (%)")
+        self.tree_ppm.config(columns=cols)
+        for c in cols:
+            self.tree_ppm.heading(c, text=c)
+            self.tree_ppm.column(c, anchor="center")
+
+        # 5) Poblar tabla en GUI
+        self.tree_ppm.delete(*self.tree_ppm.get_children())
+        self.ppm_df = pd.DataFrame(rows)  # para exportar CSV
+
+        for _, row in self.ppm_df.iterrows():
+            estado = row["Estado"]
+            tag = "safe" if "SEGURO" in estado else "alert"
+            vals = (
+                row["Metal"],
+                row["Valor (ppm)"],
+                row["Límite (ppm)"],
+                row["Estado"],
+                row["Clasificación Global"],
+                row["Nivel (%)"]
+            )
+            self.tree_ppm.insert("", "end", values=vals, tags=(tag,))
+
+        # 6) Estilos
+        self.tree_ppm.tag_configure("alert", background="#ffcdd2", foreground="#d32f2f")
+        self.tree_ppm.tag_configure("safe", background="#c8e6c9", foreground="#2e7d32")
+
+        print("[DEBUG] Tabla de clasificación actualizada correctamente")
 
 
 
@@ -1113,6 +1327,14 @@ class Aplicacion(tk.Tk):
         """
         Abre un diálogo para seleccionar un archivo .pssession.
         Procesa la sesión internamente, guarda en BD y actualiza la interfaz.
+
+        Flujo:
+        - Carga límites regulatorios desde JSON.
+        - Procesa la sesión y extrae mediciones.
+        - Calcula ppm_estimations, contamination_level y clasificacion.
+        - Determina classification_group en Python (0,1,2).
+        - Inserta datos en la BD con tipos correctos.
+        - Actualiza la interfaz gráfica.
         """
         print("[DEBUG] load_file() invoked")
         path = filedialog.askopenfilename(filetypes=[("PSSession", "*.pssession")])
@@ -1163,13 +1385,54 @@ class Aplicacion(tk.Tk):
 
             # Insertar mediciones usando la clave correcta (pca_data o pca_scores)
             for idx, m in enumerate(data["measurements"]):
-                # Identificar si la clave existe
                 pca_key = "pca_scores" if "pca_scores" in m else "pca_data"
+
+                ppm_estimations = m.get("ppm_estimations") or {}
+                contamination_level = m.get("contamination_level", 0)
+                clasificacion = m.get("clasificacion", "SIN CLASIFICAR")
+
+                # Derivar valores si faltan
+                if not ppm_estimations:
+                    ppm_estimations = {}
+                max_superacion = 0.0
+                for metal, limite in limites.items():
+                    valor = float(ppm_estimations.get(metal, 0) or 0)
+                    superacion = (valor / float(limite)) * 100 if float(limite) > 0 else 0
+                    if superacion > max_superacion:
+                        max_superacion = superacion
+                if contamination_level in (None, 0) and max_superacion > 0:
+                    contamination_level = round(max_superacion, 2)
+
+                if not clasificacion or clasificacion == "SIN CLASIFICAR":
+                    if contamination_level >= 120:
+                        clasificacion = "⚠️ CONTAMINACIÓN SEVERA"
+                    elif contamination_level >= 100:
+                        clasificacion = "⚡ CONTAMINACIÓN MODERADA"
+                    elif contamination_level >= 80:
+                        clasificacion = "🟡 REQUIERE ATENCIÓN"
+                    else:
+                        clasificacion = "✅ NIVEL SEGURO"
+
+                # Calcular classification_group en Python
+                if contamination_level >= 100:
+                    classification_group = 1
+                elif contamination_level >= 80:
+                    classification_group = 2
+                else:
+                    classification_group = 0
+
+                # Debug detallado antes de insertar
+                print(
+                    f"[DEBUG] Medición {idx+1} -> nivel={contamination_level}, clas={clasificacion}, grupo={classification_group}, ppm={ppm_estimations}"
+                )
+
                 cur.execute(
                     """
                     INSERT INTO measurements
-                      (session_id, title, timestamp, device_serial, curve_count, pca_scores)
-                    VALUES (%s, %s, %s, %s, %s, %s)
+                      (session_id, title, timestamp, device_serial, curve_count,
+                       pca_scores, ppm_estimations, classification_group,
+                       contamination_level, clasificacion)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         sid,
@@ -1178,6 +1441,10 @@ class Aplicacion(tk.Tk):
                         m.get("device_serial"),
                         m.get("curve_count"),
                         m.get(pca_key),
+                        json.dumps(ppm_estimations),
+                        classification_group,          # entero calculado en Python
+                        float(contamination_level),    # double precision
+                        clasificacion,
                     ),
                 )
                 print(f"[DEBUG] Medición {idx+1} insertada")
@@ -1195,16 +1462,14 @@ class Aplicacion(tk.Tk):
             self.txt_detail.delete("1.0", "end")
             self.txt_detail.insert("end", json.dumps(self.session_info, indent=2, ensure_ascii=False))
 
-            # Refrescar selector de curvas
             indices = list(self.current_data.index)
             self.cmb_curve["values"] = indices
             if indices:
                 self.cmb_curve.set(indices[0])
 
-            # Mostrar vistas actualizadas
             self.show_curve()
             self.show_pca()
-            self.show_ppm()
+            self.show_classification()
             self.load_sessions()
             print("[DEBUG] UI actualizada")
 
@@ -1263,10 +1528,14 @@ class Aplicacion(tk.Tk):
         except Exception as e:
             self.log_message(f"Error en consulta: {e}")
 
-    # ————— Bloque: Mostrar curvas individuales y promedio —————
+
+    # ————— Bloque: Mostrar curvas individuales y ciclo 3 —————
     def show_curve(self):
         """
         Dibuja la(s) curva(s) de voltametría para la medición seleccionada.
+        Ahora se muestran todas las curvas para inspección, pero se resalta
+        únicamente el ciclo 3, que es el usado para la clasificación según
+        los objetivos del proyecto.
         """
         print("[DEBUG] show_curve() invoked")
         if self.current_data is None or self.cmb_curve.get() == "":
@@ -1283,16 +1552,16 @@ class Aplicacion(tk.Tk):
         # Limpiar ejes
         self.ax_curve.clear()
 
-        # Graficar curvas individuales
-        for curve in curvas:
-            self.ax_curve.plot(x, curve, alpha=0.3, linewidth=1)
-
-        # Promedio y desviación estándar
-        df = pd.DataFrame(curvas).T
-        mean = df.mean(axis=1)
-        std = df.std(axis=1)
-        self.ax_curve.plot(x, mean, color="#e74c3c", linewidth=2, label="Promedio")
-        self.ax_curve.fill_between(x, mean - std, mean + std, color="#e74c3c", alpha=0.2)
+        # Graficar todas las curvas individuales en gris claro
+        for i, curve in enumerate(curvas, start=1):
+            color = "#95a5a6"  # gris
+            alpha = 0.3
+            linewidth = 1
+            if i == 3:  # ciclo 3
+                color = "#e74c3c"  # rojo intenso
+                alpha = 1.0
+                linewidth = 2
+            self.ax_curve.plot(x, curve, color=color, alpha=alpha, linewidth=linewidth)
 
         # Título y etiquetas
         si = self.session_info
@@ -1302,55 +1571,76 @@ class Aplicacion(tk.Tk):
         self.ax_curve.set_ylabel("Corriente (A)", color="white")
 
         # Leyenda y cuadrícula
-        self.ax_curve.legend(facecolor=COLOR_BG, labelcolor="white")
+        self.ax_curve.legend(["Curvas individuales", "Ciclo 3 (referencia)"],
+                             facecolor=COLOR_BG, labelcolor="white")
         self.ax_curve.grid(True, color="#5d6d7e")
 
         # Redibujar canvas
         self.canvas_curve.draw()
-        ToolTip(self.canvas_curve.get_tk_widget(), "Aquí ves la(s) curva(s) y su promedio con desviación estándar")
-
+        ToolTip(self.canvas_curve.get_tk_widget(),
+                "Aquí ves todas las curvas; el ciclo 3 en rojo es el usado para clasificación")
+  
+  
     # ————— Bloque: Mostrar PCA y varianza —————
+
+
     def show_pca(self):
         """
         Calcula y muestra el PCA de los vectores pca_scores de todas las mediciones.
+        La varianza acumulada permite identificar cuántos componentes principales
+        explican la mayor parte de la variabilidad en los datos.
         """
         print("[DEBUG] show_pca() invoked")
         if self.current_data is None or "pca_scores" not in self.current_data:
-            print("[DEBUG] show_pca: sin datos")
+            print("[DEBUG] show_pca: sin datos en current_data o falta columna pca_scores")
             return
 
-        # Matriz de datos
-        df = pd.DataFrame(self.current_data["pca_scores"].tolist()).fillna(0)
+        try:
+            # Matriz de datos
+            df = pd.DataFrame(self.current_data["pca_scores"].tolist()).fillna(0)
+            if df.empty:
+                print("[DEBUG] show_pca: DataFrame vacío, no se puede calcular PCA")
+                return
 
-        # Ajuste PCA
-        pca = PCA().fit(df)
-        var = pca.explained_variance_ratio_.cumsum() * 100
+            # Ajuste PCA
+            pca = PCA().fit(df)
+            var = pca.explained_variance_ratio_.cumsum() * 100
+            print(f"[DEBUG] show_pca: Varianza acumulada calculada, primeros valores: {var[:5]}")
 
-        # Limpiar ejes
-        self.ax_pca.clear()
+            # Limpiar ejes
+            self.ax_pca.clear()
 
-        # Graficar varianza acumulada
-        self.ax_pca.plot(range(1, len(var) + 1), var, marker="o", linewidth=2)
-        for i, v in enumerate(var[:3], start=1):
-            self.ax_pca.annotate(
-                f"{v:.1f}%",
-                (i, v),
-                textcoords="offset points",
-                xytext=(0, 5),
-                ha="center",
-                color="white"
+            # Graficar varianza acumulada
+            self.ax_pca.plot(range(1, len(var) + 1), var, marker="o", linewidth=2, color="#3498db")
+            for i, v in enumerate(var[:3], start=1):
+                self.ax_pca.annotate(
+                    f"{v:.1f}%",
+                    (i, v),
+                    textcoords="offset points",
+                    xytext=(0, 5),
+                    ha="center",
+                    color="white"
+                )
+
+            # Estética
+            self.ax_pca.set_ylim(0, 100)
+            self.ax_pca.set_title("Varianza Acumulada PCA", color="white")
+            self.ax_pca.set_xlabel("Componentes", color="white")
+            self.ax_pca.set_ylabel("Varianza (%)", color="white")
+            self.ax_pca.grid(True, color="#5d6d7e")
+
+            # Redibujar canvas
+            self.canvas_pca.draw()
+            ToolTip(
+                self.canvas_pca.get_tk_widget(),
+                "La curva muestra cuánta varianza explican los componentes principales.\n"
+                "Ejemplo: si con 2 componentes llegas al 90%, significa que esos dos\n"
+                "componentes explican el 90% de la variabilidad de los datos."
             )
 
-        # Estética
-        self.ax_pca.set_ylim(0, 100)
-        self.ax_pca.set_title("Varianza Acumulada PCA", color="white")
-        self.ax_pca.set_xlabel("Componentes", color="white")
-        self.ax_pca.set_ylabel("Varianza (%)", color="white")
-        self.ax_pca.grid(True, color="#5d6d7e")
-
-        # Redibujar canvas
-        self.canvas_pca.draw()
-        ToolTip(self.canvas_pca.get_tk_widget(), "Aquí ves la varianza acumulada de cada componente del PCA")
+        except Exception as e:
+            print(f"[DEBUG] show_pca Error: {e}")
+            messagebox.showerror("Error", f"Error calculando o mostrando PCA:\n{e}")
 
     # ——— Bloque: Pestaña “PCA” ———
     def build_pca_tab(self, parent):
@@ -1360,28 +1650,50 @@ class Aplicacion(tk.Tk):
         Args:
             parent (ttk.Notebook): Notebook donde se añade la pestaña.
         """
+        print("[DEBUG] build_pca_tab() invoked")
+
         f = ttk.Frame(parent)
         parent.add(f, text="📈 PCA")
 
+        # Botón para mostrar PCA
         btn_show_pca = ttk.Button(f, text="Mostrar PCA", command=self.show_pca)
         btn_show_pca.pack(pady=8)
-        ToolTip(btn_show_pca, "Calcula y muestra la gráfica de varianza acumulada del PCA")
+        ToolTip(
+            btn_show_pca,
+            "Calcula y muestra la gráfica de varianza acumulada del PCA.\n"
+            "Esto permite ver cuántos componentes principales explican la mayor parte de la variabilidad."
+        )
 
+        # Figura y ejes para la gráfica PCA
         self.fig_pca, self.ax_pca = plt.subplots(figsize=(9, 5), facecolor=COLOR_BG)
         self.ax_pca.set_facecolor(COLOR_BG)
         self.ax_pca.tick_params(colors="white")
         self.ax_pca.grid(True, color="#5d6d7e")
+
+        # Canvas para incrustar la figura en la GUI
         self.canvas_pca = FigureCanvasTkAgg(self.fig_pca, master=f)
         self.canvas_pca.get_tk_widget().pack(fill="both", expand=True, padx=10, pady=10)
-        ToolTip(self.canvas_pca.get_tk_widget(), "Gráfica de varianza acumulada resultante del PCA")
+        ToolTip(
+            self.canvas_pca.get_tk_widget(),
+            "Gráfica de varianza acumulada resultante del PCA.\n"
+            "Ejemplo: si con 2 componentes llegas al 90%, significa que esos dos\n"
+            "componentes explican el 90% de la variabilidad de los datos."
+        )
 
+        # Botón para exportar la gráfica
         btn_export_pca = ttk.Button(
             f,
             text="Exportar PCA",
             command=lambda: self.export_figure(self.fig_pca)
         )
         btn_export_pca.pack(side="right", padx=10, pady=5)
-        ToolTip(btn_export_pca, "Exporta la gráfica de PCA como imagen PNG")
+        ToolTip(
+            btn_export_pca,
+            "Exporta la gráfica de PCA como imagen PNG.\n"
+            "Útil para informes, documentación y trazabilidad científica."
+        )
+
+        print("[DEBUG] build_pca_tab: pestaña PCA configurada correctamente")
 
 
 
