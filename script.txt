@@ -1,0 +1,331 @@
+CREATE TABLE emisoras (
+    id SERIAL PRIMARY KEY,
+    nombre VARCHAR(100) NOT NULL,
+    url_stream TEXT NOT NULL,
+    ultima_cancion VARCHAR(200),
+    ultima_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE canciones (
+    id SERIAL PRIMARY KEY,
+    titulo VARCHAR(200),
+    artista VARCHAR(200),
+    emisora_id INTEGER REFERENCES emisoras(id),
+    fecha_reproduccion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+ALTER TABLE emisoras ADD CONSTRAINT emisoras_nombre_unique UNIQUE (nombre);
+
+-- migrations.sql
+-- Ejecutar en la BD: psql "postgresql://postgres:1234@localhost:5432/radio_monitor" -f migrations.sql
+
+-- 1) Campos extra en emisoras (no dañinos si ya existen)
+ALTER TABLE emisoras
+    ADD COLUMN IF NOT EXISTS ciudad VARCHAR(100),
+    ADD COLUMN IF NOT EXISTS genero VARCHAR(100),
+    ADD COLUMN IF NOT EXISTS plataforma VARCHAR(100),
+    ADD COLUMN IF NOT EXISTS sitio_web TEXT;
+
+ALTER TABLE emisoras ALTER COLUMN ultima_cancion TYPE VARCHAR(300);
+
+-- 2) Tabla maestra de canciones (desnormalizada) -> contadores rápidos
+CREATE TABLE IF NOT EXISTS canciones_master (
+    id SERIAL PRIMARY KEY,
+    titulo VARCHAR(300) NOT NULL,
+    artista VARCHAR(300),
+    total_plays BIGINT DEFAULT 0,
+    first_play TIMESTAMP,
+    last_play TIMESTAMP
+);
+
+-- 3) Tabla por emisora (cuenta por emisora)
+CREATE TABLE IF NOT EXISTS canciones_por_emisora (
+    id SERIAL PRIMARY KEY,
+    master_id INTEGER NOT NULL REFERENCES canciones_master(id) ON DELETE CASCADE,
+    emisora_id INTEGER NOT NULL REFERENCES emisoras(id) ON DELETE CASCADE,
+    plays BIGINT DEFAULT 0,
+    UNIQUE (master_id, emisora_id)
+);
+
+-- 4) Índices útiles
+CREATE INDEX IF NOT EXISTS idx_master_title ON canciones_master (lower(titulo));
+CREATE INDEX IF NOT EXISTS idx_master_artist ON canciones_master (lower(artista));
+CREATE INDEX IF NOT EXISTS idx_canciones_fecha ON canciones (fecha_reproduccion);
+CREATE INDEX IF NOT EXISTS idx_por_emisora ON canciones_por_emisora (emisora_id, plays DESC);
+
+-- 5) Trigger function para actualizar contadores al insertar en 'canciones'
+CREATE OR REPLACE FUNCTION public.track_cancion_insert() RETURNS trigger AS $$
+DECLARE
+    mid INT;
+BEGIN
+    -- Buscar master existente por título y artista (exact match)
+    SELECT id INTO mid FROM canciones_master
+      WHERE titulo = NEW.titulo AND (artista = NEW.artista OR (artista IS NULL AND NEW.artista IS NULL))
+      LIMIT 1;
+
+    IF NOT FOUND THEN
+        INSERT INTO canciones_master (titulo, artista, total_plays, first_play, last_play)
+        VALUES (NEW.titulo, NEW.artista, 1, NEW.fecha_reproduccion, NEW.fecha_reproduccion)
+        RETURNING id INTO mid;
+    ELSE
+        UPDATE canciones_master
+          SET total_plays = total_plays + 1,
+              last_play = NEW.fecha_reproduccion
+          WHERE id = mid;
+    END IF;
+
+    -- Upsert en canciones_por_emisora
+    INSERT INTO canciones_por_emisora (master_id, emisora_id, plays)
+    VALUES (mid, NEW.emisora_id, 1)
+    ON CONFLICT (master_id, emisora_id)
+    DO UPDATE SET plays = canciones_por_emisora.plays + 1;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 6) Crear trigger para AFTER INSERT en canciones
+DROP TRIGGER IF EXISTS trg_track_cancion_insert ON canciones;
+CREATE TRIGGER trg_track_cancion_insert
+AFTER INSERT ON canciones
+FOR EACH ROW EXECUTE FUNCTION public.track_cancion_insert();
+
+
+-- migrations_more_stats.sql
+-- Ejecutar: psql "postgresql://postgres:1234@localhost:5432/radio_monitor" -f migrations_more_stats.sql
+
+-- 1) Vista agregada: conteos por hora para una canción (útil para timeline)
+CREATE OR REPLACE VIEW vw_canciones_por_hora AS
+SELECT
+  cm.id AS master_id,
+  date_trunc('hour', c.fecha_reproduccion) AS hour,
+  count(*) AS plays
+FROM canciones c
+JOIN canciones_master cm ON cm.titulo = c.titulo AND (cm.artista = c.artista OR (cm.artista IS NULL AND c.artista IS NULL))
+GROUP BY cm.id, date_trunc('hour', c.fecha_reproduccion);
+
+-- 2) Vista diaria para trend
+CREATE OR REPLACE VIEW vw_canciones_por_dia AS
+SELECT
+  cm.id AS master_id,
+  date_trunc('day', c.fecha_reproduccion) AS day,
+  count(*) AS plays
+FROM canciones c
+JOIN canciones_master cm ON cm.titulo = c.titulo AND (cm.artista = c.artista OR (cm.artista IS NULL AND c.artista IS NULL))
+GROUP BY cm.id, date_trunc('day', c.fecha_reproduccion);
+
+-- 3) Función utilitaria: peak hour para un master_id en las últimas N horas
+CREATE OR REPLACE FUNCTION public.peak_hour_for_master(mid integer, hours integer)
+RETURNS TABLE(hour TIMESTAMP, plays bigint) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT date_trunc('hour', c.fecha_reproduccion)::timestamp AS hour, count(*)::bigint AS plays
+  FROM canciones c
+  JOIN canciones_master cm ON cm.titulo = c.titulo AND (cm.artista = c.artista OR (cm.artista IS NULL AND c.artista IS NULL))
+  WHERE cm.id = mid AND c.fecha_reproduccion >= now() - (hours || ' hours')::interval
+  GROUP BY date_trunc('hour', c.fecha_reproduccion)
+  ORDER BY plays DESC
+  LIMIT 1;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+-- 4) Función: plays in window and unique stations
+CREATE OR REPLACE FUNCTION public.song_window_stats(mid integer, hours integer)
+RETURNS TABLE(total_window bigint, unique_stations bigint) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    (SELECT count(*) FROM canciones c JOIN canciones_master cm ON cm.titulo = c.titulo AND (cm.artista = c.artista OR (cm.artista IS NULL AND c.artista IS NULL))
+     WHERE cm.id = mid AND c.fecha_reproduccion >= now() - (hours || ' hours')::interval)::bigint,
+    (SELECT count(distinct c.emisora_id) FROM canciones c JOIN canciones_master cm ON cm.titulo = c.titulo AND (cm.artista = c.artista OR (cm.artista IS NULL AND c.artista IS NULL))
+     WHERE cm.id = mid AND c.fecha_reproduccion >= now() - (hours || ' hours')::interval)::bigint;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+
+
+
+
+
+
+-- migrate_add_master_columns.sql
+-- Ejecutar sobre la BD radio_monitor
+-- Añade columnas faltantes a canciones_master, crea índices y crea canciones_por_emisora si hace falta.
+-- Idempotente: puede ejecutarse varias veces.
+
+BEGIN;
+
+-- 1) Añadir columnas a canciones_master si no existen
+ALTER TABLE canciones_master ADD COLUMN IF NOT EXISTS normalized_key TEXT;
+ALTER TABLE canciones_master ADD COLUMN IF NOT EXISTS total_plays INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE canciones_master ADD COLUMN IF NOT EXISTS first_play TIMESTAMP WITH TIME ZONE;
+ALTER TABLE canciones_master ADD COLUMN IF NOT EXISTS last_play TIMESTAMP WITH TIME ZONE;
+ALTER TABLE canciones_master ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT now();
+ALTER TABLE canciones_master ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT now();
+
+-- 2) Crear índice único sobre normalized_key (si no existe)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE c.relkind = 'i' AND c.relname = 'idx_canciones_master_normalized_key'
+  ) THEN
+    CREATE UNIQUE INDEX idx_canciones_master_normalized_key ON canciones_master (normalized_key);
+  END IF;
+END
+$$;
+
+-- 3) índice por total_plays (opcional para rank)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE c.relkind = 'i' AND c.relname = 'idx_canciones_master_total_plays'
+  ) THEN
+    CREATE INDEX idx_canciones_master_total_plays ON canciones_master (total_plays DESC);
+  END IF;
+END
+$$;
+
+-- 4) Si hay filas existentes en canciones_master -> poblar normalized_key con una normalización básica
+--    (quita paréntesis/ corchetes, remueve "feat/ft/featuring" y colapsa espacios, pasa a lower)
+UPDATE canciones_master
+SET normalized_key = (
+    lower(
+      trim(
+        regexp_replace( -- título normalizado
+          regexp_replace(coalesce(artista, ''), '\(.*?\)|\[.*?\]', '', 'g'),
+          '\s+',' ','g'
+        )
+      )
+    )
+  || '|||' ||
+    lower(
+      trim(
+        regexp_replace(
+          regexp_replace(coalesce(titulo, ''), '\(.*?\)|\[.*?\]', '', 'g'),
+          '\s+',' ','g'
+        )
+      )
+    )
+)
+WHERE normalized_key IS NULL OR normalized_key = '';
+
+-- intentar limpiar sufijos feat/ft/featuring (si Postgres soporta flags 'i' en regexp_replace)
+-- Nota: si tu versión de Postgres no soporta la misma regex, este UPDATE es seguro y no romperá nada.
+UPDATE canciones_master
+SET normalized_key = regexp_replace(normalized_key, '(feat|ft|featuring)[\.:]?\s*.*$', '', 'gi')
+WHERE normalized_key ~* '(feat|ft|featuring)';
+
+-- trim extra luego de quitar feat
+UPDATE canciones_master
+SET normalized_key = trim(regexp_replace(normalized_key, '\s+', ' ', 'g'))
+WHERE normalized_key ~ '\s{2,}';
+
+-- 5) Asegurarnos de que todas las normalized_key no sean NULL (si quedan, poner valor vacío)
+UPDATE canciones_master
+SET normalized_key = COALESCE(normalized_key, '')
+WHERE normalized_key IS NULL;
+
+-- 6) Crear tabla canciones_por_emisora si no existe
+CREATE TABLE IF NOT EXISTS canciones_por_emisora (
+    id SERIAL PRIMARY KEY,
+    master_id INTEGER NOT NULL,
+    emisora_id INTEGER NOT NULL,
+    plays INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- 7) Añadir FK si no existen (con cuidado: si las restricciones existen omitimos)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints tc
+    JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name
+    WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_name = 'canciones_por_emisora' AND kcu.column_name = 'master_id'
+  ) THEN
+    ALTER TABLE canciones_por_emisora
+      ADD CONSTRAINT fk_cpe_master FOREIGN KEY (master_id) REFERENCES canciones_master(id) ON DELETE CASCADE;
+  END IF;
+END
+$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints tc
+    JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name
+    WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_name = 'canciones_por_emisora' AND kcu.column_name = 'emisora_id'
+  ) THEN
+    -- Asegura que exista tabla emisoras; si no, la FK fallará (postpone si hace falta).
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'emisoras') THEN
+      ALTER TABLE canciones_por_emisora
+        ADD CONSTRAINT fk_cpe_emisora FOREIGN KEY (emisora_id) REFERENCES emisoras(id) ON DELETE CASCADE;
+    END IF;
+  END IF;
+END
+$$;
+
+-- 8) Añadir unique constraint master_id + emisora_id si no existe
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_type = 'UNIQUE' AND table_name = 'canciones_por_emisora' AND constraint_name = 'uix_master_emisora'
+  ) THEN
+    BEGIN
+      ALTER TABLE canciones_por_emisora ADD CONSTRAINT uix_master_emisora UNIQUE (master_id, emisora_id);
+    EXCEPTION WHEN duplicate_object THEN
+      -- si ya existe otro index/constraint con distinto nombre, ignorar
+      NULL;
+    END;
+  END IF;
+END
+$$;
+
+-- 9) índices para canciones_por_emisora
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_class c WHERE c.relkind = 'i' AND c.relname = 'idx_canciones_por_emisora_master'
+  ) THEN
+    CREATE INDEX idx_canciones_por_emisora_master ON canciones_por_emisora (master_id);
+  END IF;
+END
+$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_class c WHERE c.relkind = 'i' AND c.relname = 'idx_canciones_por_emisora_emisora'
+  ) THEN
+    CREATE INDEX idx_canciones_por_emisora_emisora ON canciones_por_emisora (emisora_id);
+  END IF;
+END
+$$;
+
+COMMIT;
+
+
+DROP TABLE IF EXISTS canciones_por_emisora CASCADE;
+
+
+CREATE TABLE IF NOT EXISTS canciones_por_emisora (
+    id SERIAL PRIMARY KEY,
+    master_id INTEGER REFERENCES canciones_master(id) ON DELETE CASCADE,
+    emisora_id INTEGER REFERENCES emisoras(id) ON DELETE CASCADE,
+    plays INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+ALTER TABLE emisoras
+ADD COLUMN IF NOT EXISTS ciudad VARCHAR(120),
+ADD COLUMN IF NOT EXISTS genero VARCHAR(120),
+ADD COLUMN IF NOT EXISTS plataforma VARCHAR(120),
+ADD COLUMN IF NOT EXISTS sitio_web VARCHAR(255);
+ALTER TABLE canciones_por_emisora
+ADD CONSTRAINT canciones_por_emisora_unique UNIQUE (master_id, emisora_id);
+

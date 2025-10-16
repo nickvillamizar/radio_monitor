@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Radio Monitor — Panel</title>
+
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header class="header">
+    <div class="container header-grid">
+      <div>
+        <h1>Radio Monitor</h1>
+        <p class="subtitle">Monitoreo automático — Estadísticas y última actividad</p>
+      </div>
+      <div class="header-actions">
+        <div class="small-muted">Intervalo: {{ config.MONITOR_INTERVAL }}s</div>
+        <button id="refresh-btn" class="btn-outline">Actualizar ahora</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container main-grid">
+
+    <aside class="left-col">
+      <section class="card">
+        <div class="card-header">
+          <h3>Top global — Canciones</h3>
+          <div class="card-actions">
+            <button id="export-top-csv" class="btn-ghost">Exportar CSV</button>
+            <select id="top-limit" class="select-sm">
+              <option value="10">Top 10</option>
+              <option value="20" selected>Top 20</option>
+              <option value="50">Top 50</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="list" id="top-songs-list">
+          {% if top_songs %}
+            {% for s in top_songs %}
+            <div class="list-item" data-master-id="{{ s.id }}" data-master-key="{{ s.master_key }}">
+              <div class="list-rank">{{ loop.index }}</div>
+              <div class="list-main">
+                <div class="list-title">{{ s.titulo }}</div>
+                <div class="list-sub">{{ s.artista }}</div>
+              </div>
+              <div class="list-meta">
+                <div class="plays">{{ s.total_plays or 0 }}</div>
+                <button class="btn-link btn-detail" data-master-id="{{ s.id }}" data-master-key="{{ s.master_key }}">Detalle</button>
+              </div>
+            </div>
+            {% endfor %}
+          {% else %}
+            <div class="empty">No hay top disponible — espera a que se generen datos.</div>
+          {% endif %}
+        </div>
+      </section>
+
+      <section class="card small-cards">
+        <div class="card-short">
+          <h4>Top artistas</h4>
+          <ol class="compact-list">
+            {% if top_artists %}
+              {% for a, plays in top_artists %}
+                <li>{{ a or '—' }} <span class="muted">({{ plays }})</span></li>
+              {% endfor %}
+            {% else %}
+              <li class="muted">Sin datos</li>
+            {% endif %}
+          </ol>
+        </div>
+
+        <div class="card-short">
+          <h4>Plays por emisora</h4>
+          <ol class="compact-list">
+            {% if plays_per_station %}
+              {% for r in plays_per_station %}
+                <li>{{ r.nombre }} <span class="muted">({{ r.plays or 0 }})</span></li>
+              {% endfor %}
+            {% else %}
+              <li class="muted">Sin datos</li>
+            {% endif %}
+          </ol>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-header">
+          <h3>Actividad (últimas horas)</h3>
+          <div class="card-actions">
+            <select id="timeseries-hours" class="select-sm">
+              <option value="6">6h</option>
+              <option value="12">12h</option>
+              <option value="24" selected>24h</option>
+              <option value="72">72h</option>
+            </select>
+          </div>
+        </div>
+        <div style="height:260px">
+          <canvas id="timeseries-chart"></canvas>
+        </div>
+      </section>
+    </aside>
+
+    <section class="right-col">
+      <section class="card">
+        <div class="card-header">
+          <h3>Emisoras registradas</h3>
+          <div class="card-actions">
+            <input id="filter-station" class="input-sm" placeholder="Buscar emisora..." />
+            <button id="manage-stations" class="btn-outline">Administrar</button>
+          </div>
+        </div>
+
+        <div class="table-wrapper">
+          <table class="table-compact" id="emisoras-table" role="table">
+            <thead>
+              <tr>
+                <th>Emisora</th>
+                <th>Última canción</th>
+                <th>Última actualización</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for e in emisoras %}
+                <tr>
+                  <td class="station-name">{{ e.nombre }}</td>
+                  <td>{{ e.ultima_cancion or 'Sin datos' }}</td>
+                  <td>{{ e.ultima_actualizacion.strftime('%Y-%m-%d %H:%M:%S') if e.ultima_actualizacion else '---' }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-header">
+          <h3>Últimas reproducciones</h3>
+          <div class="card-actions">
+            <input id="filter-play" class="input-sm" placeholder="Buscar artista / título..." />
+            <button id="export-plays-csv" class="btn-ghost">Exportar</button>
+          </div>
+        </div>
+
+        <div class="table-wrapper small-scroll">
+          <table class="table-compact" id="latest-table">
+            <thead>
+              <tr>
+                <th>Hora</th>
+                <th>Emisora</th>
+                <th>Artista</th>
+                <th>Título</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for s in ultimas %}
+                <tr data-emisora-id="{{ s.emisora_id }}">
+                  <td>{{ s.fecha_reproduccion.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                  <td>
+                    {% set emis = s.emisora_id %}
+                    {% for e in emisoras %}
+                      {% if e.id == emis %}
+                        {{ e.nombre }}
+                      {% endif %}
+                    {% endfor %}
+                  </td>
+                  <td>{{ s.artista or '—' }}</td>
+                  <td class="play-title">{{ s.titulo or '—' }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <small>Desarrollador: Nicolás Ramírez Villamizar
+        Contacto: +57-310-5337362 · {{ "now" | safe }}</small>
+    </div>
+  </footer>
+
+  <div id="song-modal" class="modal" aria-hidden="true">
+    <div class="modal-panel">
+      <button id="modal-close" class="modal-close" aria-label="Cerrar">✕</button>
+      <div id="modal-content">
+        <h2 id="modal-title">Título — Artista</h2>
+        <div class="modal-meta">
+          <div><strong>Total reproducciones:</strong> <span id="modal-plays"></span></div>
+          <div><strong>Emisoras distintas:</strong> <span id="modal-emisoras"></span></div>
+          <div><strong>Primera reproducción:</strong> <span id="modal-first"></span></div>
+          <div><strong>Última reproducción:</strong> <span id="modal-last"></span></div>
+        </div>
+
+        <h4>Por emisora</h4>
+        <div id="modal-breakdown" class="breakdown-list"></div>
+
+        <h4>Últimos plays</h4>
+        <div class="table-wrapper small-scroll" style="max-height:240px">
+          <table class="table-compact" id="modal-plays-table">
+            <thead><tr><th>Hora</th><th>Emisora</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="emisoras-modal" class="modal" aria-hidden="true">
+    <div class="modal-panel large">
+      <button id="emisoras-close" class="modal-close" aria-label="Cerrar">✕</button>
+      <h2>Administrar emisoras</h2>
+      <div class="table-wrapper small-scroll">
+        <table class="table-compact" id="emisoras-admin-table">
+          <thead>
+            <tr><th>Nombre</th><th>URL Stream</th><th>País</th><th>Acciones</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="form-inline">
+        <input id="new-name" placeholder="Nombre" />
+        <input id="new-url" placeholder="URL Stream" />
+        <input id="new-country" placeholder="País (opcional)" />
+        <button id="add-station" class="btn-primary">Agregar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const api = {
+      topSongs: (limit=20) => `/api/stats/top_songs?limit=${limit}`,
+      timeseries: (hours=24) => `/api/stats/timeseries?hours=${hours}`,
+      songDetail: (master_key) => `/api/stats/song/${encodeURIComponent(master_key)}`,
+      topByStation: (id, limit=20) => `/api/stats/top_by_station/${id}?limit=${limit}`
+    };
+
+    function showNotification(message, type = 'info') {
+      const notification = document.createElement('div');
+      notification.style.cssText = 'position:fixed;top:20px;right:20px;background:' + (type === 'error' ? '#ff4c4c' : '#00e8a2') + ';color:#fff;padding:12px 16px;border-radius:8px;z-index:10000;font-weight:600;';
+      notification.textContent = message;
+      document.body.appendChild(notification);
+      setTimeout(() => notification.remove(), 3000);
+    }
+
+    document.getElementById('refresh-btn').addEventListener('click', () => {
+      location.reload();
+    });
+
+    let timeseriesChart = null;
+    async function loadTimeseries(hours = 24) {
+      try {
+        const res = await fetch(api.timeseries(hours));
+        if (!res.ok) throw new Error('Error cargando timeseries');
+        const data = await res.json();
+        if (!data || data.length === 0) {
+          document.getElementById('timeseries-chart').style.display = 'none';
+          return;
+        }
+        document.getElementById('timeseries-chart').style.display = 'block';
+        const labels = data.map(r => new Date(r.hour).toLocaleString());
+        const values = data.map(r => r.plays);
+        const ctx = document.getElementById('timeseries-chart').getContext('2d');
+        if (timeseriesChart) timeseriesChart.destroy();
+        timeseriesChart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels,
+            datasets: [{
+              label: 'Reproducciones por hora',
+              data: values,
+              tension: 0.25,
+              fill: true,
+              borderColor: 'rgb(0, 180, 255)',
+              backgroundColor: 'rgba(0, 180, 255, 0.1)'
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: { x: { ticks: { maxRotation: 45 } } }
+          }
+        });
+      } catch (err) {
+        console.error('Error en timeseries:', err);
+        showNotification('Error al cargar gráfica', 'error');
+      }
+    }
+
+    document.getElementById('timeseries-hours').addEventListener('change', (e) => {
+      loadTimeseries(parseInt(e.target.value));
+    });
+
+    loadTimeseries(parseInt(document.getElementById('timeseries-hours').value || 24));
+
+    const modal = document.getElementById('song-modal');
+    const modalTitle = document.getElementById('modal-title');
+    const modalPlays = document.getElementById('modal-plays');
+    const modalEmisoras = document.getElementById('modal-emisoras');
+    const modalFirst = document.getElementById('modal-first');
+    const modalLast = document.getElementById('modal-last');
+    const modalBreakdown = document.getElementById('modal-breakdown');
+    const modalPlaysTableBody = document.querySelector('#modal-plays-table tbody');
+    document.getElementById('modal-close').addEventListener('click', closeModal);
+
+    async function openSongModal(master_key) {
+      modal.setAttribute('aria-hidden', 'false');
+      modal.classList.add('open');
+      modalTitle.textContent = 'Cargando...';
+      modalPlays.textContent = '—';
+      modalEmisoras.textContent = '—';
+      modalFirst.textContent = '—';
+      modalLast.textContent = '—';
+      modalBreakdown.innerHTML = '';
+      modalPlaysTableBody.innerHTML = '';
+      try {
+        const res = await fetch(api.songDetail(master_key));
+        if (!res.ok) {
+          modalTitle.textContent = 'Error cargando detalles';
+          return;
+        }
+        const data = await res.json();
+        modalTitle.textContent = `${data.titulo || '—'} — ${data.artista || '—'}`;
+        modalPlays.textContent = data.total_plays || 0;
+        modalEmisoras.textContent = data.total_emisoras || 0;
+        modalFirst.textContent = data.first_play ? new Date(data.first_play).toLocaleString() : '—';
+        modalLast.textContent = data.last_play ? new Date(data.last_play).toLocaleString() : '—';
+        if (data.per_station && data.per_station.length > 0) {
+          modalBreakdown.innerHTML = data.per_station.map(p => `<div class="breakdown-row"><strong>${p.emisora_nombre || '—'}</strong><span class="muted">(${p.plays})</span></div>`).join('');
+        } else {
+          modalBreakdown.innerHTML = '<div class="muted">Sin reproducciones por emisora.</div>';
+        }
+        if (data.recent_plays && data.recent_plays.length > 0) {
+          modalPlaysTableBody.innerHTML = data.recent_plays.map(r => `<tr><td>${new Date(r.fecha).toLocaleString()}</td><td>${r.emisora_nombre || '—'}</td></tr>`).join('');
+        } else {
+          modalPlaysTableBody.innerHTML = '<tr><td colspan="2" class="muted">Sin reproducciones recientes</td></tr>';
+        }
+      } catch (err) {
+        console.error('Error abriendo modal:', err);
+        modalTitle.textContent = 'Error de conexión';
+      }
+    }
+
+    function closeModal() {
+      modal.setAttribute('aria-hidden', 'true');
+      modal.classList.remove('open');
+    }
+
+    document.addEventListener('click', (ev) => {
+      const btn = ev.target.closest('.btn-detail');
+      if (btn) {
+        const masterKey = btn.dataset.masterKey || btn.dataset.masterId;
+        openSongModal(masterKey);
+      }
+      const item = ev.target.closest('.list-item');
+      if (item && ev.target.classList.contains('list-main')) {
+        const masterKey = item.dataset.masterKey || item.dataset.masterId;
+        openSongModal(masterKey);
+      }
+    });
+
+    document.getElementById('filter-station').addEventListener('input', (e) => {
+      const q = e.target.value.toLowerCase();
+      document.querySelectorAll('#emisoras-table tbody tr').forEach(tr => {
+        tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
+      });
+    });
+
+    document.getElementById('filter-play').addEventListener('input', (e) => {
+      const q = e.target.value.toLowerCase();
+      document.querySelectorAll('#latest-table tbody tr').forEach(tr => {
+        tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
+      });
+    });
+
+    function rowsToCSV(rows, headers) {
+      const esc = v => `"${String(v || '').replace(/"/g, '""')}"`;
+      const head = headers.map(esc).join(',');
+      const body = rows.map(r => headers.map(h => esc(r[h] || '')).join(',')).join('\n');
+      return head + '\n' + body;
+    }
+
+    document.getElementById('export-top-csv').addEventListener('click', async () => {
+      try {
+        const limit = document.getElementById('top-limit').value || 20;
+        const res = await fetch(api.topSongs(limit));
+        if (!res.ok) throw new Error('Error descargando CSV');
+        const data = await res.json();
+        const rows = data.map(r => ({
+          titulo: r.titulo || '—',
+          artista: r.artista || '—',
+          total_plays: r.total_plays || 0,
+          total_emisoras: r.total_emisoras || 0,
+          first_play: r.first_play || '—',
+          last_play: r.last_play || '—'
+        }));
+        const csv = rowsToCSV(rows, ['titulo', 'artista', 'total_plays', 'total_emisoras', 'first_play', 'last_play']);
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `top_songs_${new Date().toISOString().split('T')[0]}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showNotification('CSV descargado correctamente');
+      } catch (err) {
+        console.error('Error descargando CSV:', err);
+        showNotification('Error descargando CSV', 'error');
+      }
+    });
+
+    document.getElementById('export-plays-csv').addEventListener('click', () => {
+      try {
+        const rows = Array.from(document.querySelectorAll('#latest-table tbody tr'))
+          .filter(r => r.style.display !== 'none')
+          .map(r => {
+            const c = r.querySelectorAll('td');
+            return {
+              hora: c[0] ? c[0].textContent.trim() : '—',
+              emisora: c[1] ? c[1].textContent.trim() : '—',
+              artista: c[2] ? c[2].textContent.trim() : '—',
+              titulo: c[3] ? c[3].textContent.trim() : '—'
+            };
+          });
+        const csv = rowsToCSV(rows, ['hora', 'emisora', 'artista', 'titulo']);
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `ultimas_reproducciones_${new Date().toISOString().split('T')[0]}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showNotification('CSV descargado correctamente');
+      } catch (err) {
+        console.error('Error descargando CSV:', err);
+        showNotification('Error descargando CSV', 'error');
+      }
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeModal();
+    });
+
+    document.querySelectorAll('.list-item').forEach(i => {
+      i.addEventListener('dblclick', () => {
+        const masterKey = i.dataset.masterKey || i.dataset.masterId;
+        openSongModal(masterKey);
+      });
+    });
+
+    const emisorasModal = document.getElementById('emisoras-modal');
+    const emisorasTableBody = document.querySelector('#emisoras-admin-table tbody');
+
+    document.getElementById('manage-stations').addEventListener('click', async () => {
+      emisorasModal.classList.add('open');
+      emisorasModal.setAttribute('aria-hidden', 'false');
+      await cargarEmisoras();
+    });
+
+    document.getElementById('emisoras-close').addEventListener('click', () => {
+      emisorasModal.classList.remove('open');
+      emisorasModal.setAttribute('aria-hidden', 'true');
+    });
+
+    async function cargarEmisoras() {
+      try {
+        emisorasTableBody.innerHTML = '<tr><td colspan="4">Cargando...</td></tr>';
+        const res = await fetch('/api/emisoras');
+        if (!res.ok) throw new Error('Error cargando emisoras');
+        const emisoras = await res.json();
+        emisorasTableBody.innerHTML = emisoras.map(e => `
+          <tr data-id="${e.id}">
+            <td contenteditable="true" class="edit-nombre">${e.nombre || ''}</td>
+            <td contenteditable="true" class="edit-url">${e.url_stream || ''}</td>
+            <td contenteditable="true" class="edit-pais">${e.pais || ''}</td>
+            <td>
+              <button class="btn-small btn-save">💾</button>
+              <button class="btn-small btn-delete">🗑️</button>
+            </td>
+          </tr>`).join('');
+      } catch (err) {
+        console.error('Error cargando emisoras:', err);
+        emisorasTableBody.innerHTML = '<tr><td colspan="4" class="muted">Error cargando emisoras</td></tr>';
+      }
+    }
+
+    document.addEventListener('click', async (e) => {
+      if (e.target.classList.contains('btn-save')) {
+        try {
+          const tr = e.target.closest('tr');
+          const id = tr.dataset.id;
+          const nombre = tr.querySelector('.edit-nombre').textContent.trim();
+          const url_stream = tr.querySelector('.edit-url').textContent.trim();
+          const pais = tr.querySelector('.edit-pais').textContent.trim();
+
+          if (!nombre || !url_stream) {
+            showNotification('Nombre y URL son obligatorios', 'error');
+            return;
+          }
+
+          const res = await fetch(`/api/emisoras/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nombre, url_stream, pais })
+          });
+
+          if (!res.ok) throw new Error('Error actualizando');
+          showNotification('Emisora actualizada correctamente');
+          await refrescarTablaEmisoras();
+        } catch (err) {
+          console.error('Error guardando:', err);
+          showNotification('Error actualizando emisora', 'error');
+        }
+      }
+
+      if (e.target.classList.contains('btn-delete')) {
+        try {
+          const tr = e.target.closest('tr');
+          const id = tr.dataset.id;
+          if (!confirm('¿Eliminar esta emisora?')) return;
+
+          const res = await fetch(`/api/emisoras/${id}`, { method: 'DELETE' });
+          if (!res.ok) throw new Error('Error eliminando');
+          tr.remove();
+          showNotification('Emisora eliminada correctamente');
+          await refrescarTablaEmisoras();
+        } catch (err) {
+          console.error('Error eliminando:', err);
+          showNotification('Error eliminando emisora', 'error');
+        }
+      }
+    });
+
+    document.getElementById('add-station').addEventListener('click', async () => {
+      try {
+        const nombre = document.getElementById('new-name').value.trim();
+        const url_stream = document.getElementById('new-url').value.trim();
+        const pais = document.getElementById('new-country').value.trim();
+
+        if (!nombre || !url_stream) {
+          showNotification('Nombre y URL son obligatorios', 'error');
+          return;
+        }
+
+        const res = await fetch('/api/emisoras', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nombre, url_stream, pais })
+        });
+
+        if (!res.ok) throw new Error('Error agregando');
+
+        document.getElementById('new-name').value = '';
+        document.getElementById('new-url').value = '';
+        document.getElementById('new-country').value = '';
+        showNotification('Emisora agregada correctamente');
+        await cargarEmisoras();
+        await refrescarTablaEmisoras();
+      } catch (err) {
+        console.error('Error agregando:', err);
+        showNotification('Error agregando emisora', 'error');
+      }
+    });
+
+    async function refrescarTablaEmisoras() {
+      try {
+        const res = await fetch('/api/emisoras');
+        if (!res.ok) return;
+        const emisoras = await res.json();
+        const tbody = document.querySelector('#emisoras-table tbody');
+        tbody.innerHTML = emisoras.map(e => `
+          <tr>
+            <td class="station-name">${e.nombre || '—'}</td>
+            <td>${e.ultima_cancion || 'Sin datos'}</td>
+            <td>${e.ultima_actualizacion ? new Date(e.ultima_actualizacion).toLocaleString() : '---'}</td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        console.error('Error refrescando emisoras:', err);
+      }
+    }
+
+    document.getElementById('top-limit').addEventListener('change', async (e) => {
+      try {
+        const limit = e.target.value;
+        const res = await fetch(api.topSongs(limit));
+        if (!res.ok) throw new Error('Error cargando top');
+        const data = await res.json();
+        const list = document.getElementById('top-songs-list');
+        if (!data || data.length === 0) {
+          list.innerHTML = '<div class="empty">No hay datos disponibles</div>';
+          return;
+        }
+        list.innerHTML = data.map((s, idx) => `
+          <div class="list-item" data-master-id="${s.id}" data-master-key="${s.master_key}">
+            <div class="list-rank">${idx + 1}</div>
+            <div class="list-main">
+              <div class="list-title">${s.titulo || '—'}</div>
+              <div class="list-sub">${s.artista || '—'}</div>
+            </div>
+            <div class="list-meta">
+              <div class="plays">${s.total_plays || 0}</div>
+              <button class="btn-link btn-detail" data-master-id="${s.id}" data-master-key="${s.master_key}">Detalle</button>
+            </div>
+          </div>
+        `).join('');
+      } catch (err) {
+        console.error('Error cambiando top limit:', err);
+        showNotification('Error cargando top', 'error');
+      }
+    });
+  </script>
+</body>
+</html>
