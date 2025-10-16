@@ -2,3 +2,4 @@ Flask
 Flask_SQLAlchemy
 requests
 pg8000
+gunicorn
