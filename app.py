@@ -13,8 +13,6 @@ from utils.db import db
 from models.emisoras import Emisora, Cancion  # Emisora and Cancion must exist
 from routes.emisoras_api import emisoras_api
 
-
-
 # Try importing optional summary models (if you created them)
 try:
     from models.emisoras import CancionMaster, CancionPorEmisora  # optional
@@ -31,7 +29,6 @@ db.init_app(app)
 # Importar y registrar las rutas de administración de emisoras
 from routes.emisoras_api import emisoras_api
 app.register_blueprint(emisoras_api)
-
 
 
 def monitor_loop():
@@ -88,7 +85,8 @@ def count_distinct_emisoras(titulo, artista):
     return (
         db.session.query(func.count(Cancion.emisora_id.distinct()))
         .filter(Cancion.titulo == titulo, Cancion.artista == artista)
-        .scalar() or 0
+        .scalar()
+        or 0
     )
 
 
@@ -98,7 +96,8 @@ def count_distinct_emisoras_master(master_id):
         return (
             db.session.query(func.count(CancionPorEmisora.emisora_id.distinct()))
             .filter(CancionPorEmisora.master_id == master_id)
-            .scalar() or 0
+            .scalar()
+            or 0
         )
     return 0
 
@@ -111,12 +110,21 @@ def index():
     emisoras = Emisora.query.order_by(Emisora.nombre).all()
     ultimas = Cancion.query.order_by(Cancion.fecha_reproduccion.desc()).limit(50).all()
 
-    # Top global: prefer CancionMaster if available, otherwise compute from Cancion
+    # Decide si usar CancionMaster sólo si existe y tiene filas
+    use_master = False
     if HAS_MASTER and CancionMaster is not None:
+        try:
+            master_count = db.session.query(func.count(CancionMaster.id)).scalar() or 0
+            if master_count > 0:
+                use_master = True
+        except Exception:
+            use_master = False
+
+    # Top global: prefer CancionMaster if available and populated, otherwise compute from Cancion
+    if use_master:
         top_songs = (
             CancionMaster.query.order_by(CancionMaster.total_plays.desc()).limit(20).all()
         )
-        # expose master_id (id) and other fields directly to template
     else:
         # compute top songs from Cancion table by grouping (titulo + artista)
         top_q = (
@@ -146,10 +154,11 @@ def index():
             t.last_play = r.last_play
             # create master_key for front to request details
             t.master_key = make_master_key(r.artista or "", r.titulo or "")
+            t.id = None
             top_songs.append(t)
 
     # Top artists: aggregate plays per artist
-    if HAS_MASTER and CancionMaster is not None:
+    if use_master and CancionMaster is not None:
         top_artists = (
             db.session.query(
                 CancionMaster.artista,
@@ -160,6 +169,8 @@ def index():
             .limit(20)
             .all()
         )
+        # convert to (artist, plays) pairs for template compatibility
+        top_artists = [(r.artista, int(r.plays or 0)) for r in top_artists]
     else:
         top_artists = (
             db.session.query(
@@ -171,9 +182,10 @@ def index():
             .limit(20)
             .all()
         )
+        top_artists = [(r.artista, int(r.plays or 0)) for r in top_artists]
 
     # Plays per station (totales) - try to use CancionPorEmisora if exists for performance
-    if HAS_MASTER and CancionPorEmisora is not None:
+    if use_master and CancionPorEmisora is not None:
         plays_per_station = (
             db.session.query(
                 Emisora.id,
@@ -205,6 +217,7 @@ def index():
         top_songs=top_songs,
         top_artists=top_artists,
         plays_per_station=plays_per_station,
+        config=app.config,
     )
 
 
@@ -214,12 +227,21 @@ def index():
 @app.route("/api/stats/top_songs")
 def api_top_songs():
     limit = int(request.args.get("limit", 20))
+
+    use_master = False
+    if HAS_MASTER and CancionMaster is not None:
+        try:
+            master_count = db.session.query(func.count(CancionMaster.id)).scalar() or 0
+            if master_count > 0:
+                use_master = True
+        except Exception:
+            use_master = False
+
     out = []
 
-    if HAS_MASTER and CancionMaster is not None:
+    if use_master:
         rows = CancionMaster.query.order_by(CancionMaster.total_plays.desc()).limit(limit).all()
         for r in rows:
-            # breakdown per emisora (top 10)
             if CancionPorEmisora is not None:
                 break_down = (
                     db.session.query(Emisora.id, Emisora.nombre, CancionPorEmisora.plays)
@@ -233,10 +255,8 @@ def api_top_songs():
                     {"emisora_id": b.id, "emisora_nombre": b.nombre, "plays": int(b.plays)}
                     for b in break_down
                 ]
-                # Contar emisoras distintas
                 total_emisoras = int(count_distinct_emisoras_master(r.id))
             else:
-                # compute breakdown from canciones table
                 bd = (
                     db.session.query(Emisora.id, Emisora.nombre, func.count(Cancion.id).label("plays"))
                     .join(Cancion, Cancion.emisora_id == Emisora.id)
@@ -249,7 +269,6 @@ def api_top_songs():
                 breakdown_list = [
                     {"emisora_id": b.id, "emisora_nombre": b.nombre, "plays": int(b.plays)} for b in bd
                 ]
-                # Contar emisoras distintas
                 total_emisoras = int(count_distinct_emisoras(r.titulo, r.artista))
 
             out.append(
@@ -262,7 +281,7 @@ def api_top_songs():
                     "first_play": r.first_play.isoformat() if r.first_play else None,
                     "last_play": r.last_play.isoformat() if r.last_play else None,
                     "breakdown": breakdown_list,
-                    "master_key": (str(r.id)),
+                    "master_key": str(r.id),
                 }
             )
     else:
@@ -280,7 +299,6 @@ def api_top_songs():
             .all()
         )
         for r in rows:
-            # breakdown per station
             bd = (
                 db.session.query(Emisora.id, Emisora.nombre, func.count(Cancion.id).label("plays"))
                 .join(Cancion, Cancion.emisora_id == Emisora.id)
@@ -291,10 +309,7 @@ def api_top_songs():
                 .all()
             )
             breakdown_list = [{"emisora_id": b.id, "emisora_nombre": b.nombre, "plays": int(b.plays)} for b in bd]
-            
-            # Contar emisoras distintas
             total_emisoras = int(count_distinct_emisoras(r.titulo, r.artista))
-            
             master_key = make_master_key(r.artista or "", r.titulo or "")
             out.append(
                 {
@@ -320,7 +335,17 @@ def api_top_songs():
 def api_top_by_station(emisora_id):
     limit = int(request.args.get("limit", 20))
 
+    use_master = False
     if HAS_MASTER and CancionPorEmisora is not None:
+        try:
+            # if CancionPorEmisora contains data, use it
+            cp_count = db.session.query(func.count(CancionPorEmisora.emisora_id)).scalar() or 0
+            if cp_count > 0:
+                use_master = True
+        except Exception:
+            use_master = False
+
+    if use_master:
         rows = (
             db.session.query(
                 CancionMaster.id.label("mid"),
@@ -354,9 +379,7 @@ def api_top_by_station(emisora_id):
 
 # ---------------------------
 # API: detalle canción + últimos plays
-# Accepts either:
-#  - numeric master_id (if CancionMaster exists and you pass an id)
-#  - encoded master_key (artist|||title) (recommended if no CancionMaster)
+# (sin cambios - mantiene comportamiento actual)
 # ---------------------------
 @app.route("/api/stats/song/<path:master_key>")
 def api_song_detail(master_key):

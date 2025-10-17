@@ -1,944 +1,325 @@
-/* ============================================================
- 🎧 RADIO MONITOR PRO UI — VERSIÓN BROADCAST PREMIUM 2025
- ============================================================ */
-
-/* 🎨 Paleta profesional */
-:root {
-  --bg: #0d111a;
-  --surface: #151b2b;
-  --surface-light: #1b2337;
-  --accent: #00b4ff;
-  --accent2: #0075ff;
-  --success: #00e8a2;
-  --text: #e6ebf5;
-  --muted: #9aa3b2;
-  --radius: 14px;
-  --shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
-  --font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-}
-
-/* 🧱 Reset + base */
-* { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; }
-body {
-  background: radial-gradient(circle at top left, #10172a, #0b0e16 70%);
-  color: var(--text);
-  font-family: var(--font);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  line-height: 1.45;
-  letter-spacing: 0.2px;
-}
-
-/* 📦 Container */
-.container {
-  max-width: 1250px;
-  margin: 0 auto;
-  padding: 0 24px;
-}
-
-/* ====================== HEADER ====================== */
-.header {
-  background: linear-gradient(90deg, var(--accent2), var(--accent));
-  color: #fff;
-  padding: 22px 0;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-.header-grid {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-}
-.header h1 {
-  font-size: 26px;
-  font-weight: 700;
-  margin: 0;
-}
-.subtitle {
-  font-size: 14px;
-  opacity: 0.95;
-  margin-top: 4px;
-}
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  margin-top: 10px;
-}
-.small-muted {
-  font-size: 13px;
-  opacity: 0.8;
-}
-.btn-outline {
-  background: transparent;
-  border: 1px solid rgba(255,255,255,0.5);
-  color: #fff;
-  border-radius: 10px;
-  padding: 8px 14px;
-  cursor: pointer;
-  font-weight: 600;
-  transition: all 0.25s ease;
-}
-.btn-outline:hover {
-  background: rgba(255,255,255,0.15);
-  transform: translateY(-1px);
-}
-
-/* ====================== LAYOUT ====================== */
-.main-grid {
-  display: grid;
-  grid-template-columns: 420px 1fr;
-  gap: 24px;
-  margin-top: 26px;
-  align-items: start;
-}
-.left-col, .right-col {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-/* ====================== CARDS ====================== */
-.card {
-  background: var(--surface);
-  border-radius: var(--radius);
-  padding: 18px 20px;
-  box-shadow: var(--shadow);
-  transition: all 0.25s ease;
-}
-.card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
-}
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-.card-header h3 {
-  color: var(--accent);
-  font-size: 17px;
-  font-weight: 600;
-}
-.card-actions {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-.card-short {
-  flex: 1;
-  background: var(--surface-light);
-  border-radius: 12px;
-  padding: 14px;
-  box-shadow: inset 0 0 8px rgba(255,255,255,0.03);
-}
-
-/* ====================== LISTAS ====================== */
-.list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  max-height: 420px;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--accent) transparent;
-}
-.list-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: var(--surface-light);
-  border-radius: 10px;
-  padding: 10px 12px;
-  border: 1px solid rgba(255,255,255,0.04);
-  transition: all 0.2s ease;
-}
-.list-item:hover {
-  background: rgba(0,180,255,0.08);
-  transform: translateY(-2px);
-}
-.list-rank {
-  width: 34px;
-  height: 34px;
-  background: linear-gradient(180deg, var(--accent2), var(--accent));
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  border-radius: 8px;
-  flex-shrink: 0;
-}
-.list-main {
-  flex: 1;
-  margin-left: 10px;
-}
-.list-title {
-  font-weight: 600;
-  font-size: 14px;
-}
-.list-sub {
-  font-size: 13px;
-  color: var(--muted);
-}
-.list-meta {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 5px;
-}
-.plays {
-  color: var(--accent);
-  font-weight: 700;
-}
-.btn-link {
-  background: none;
-  border: none;
-  color: var(--accent);
-  cursor: pointer;
-  font-size: 13px;
-  padding: 0;
-}
-.btn-link:hover {
-  color: #fff;
-  text-decoration: underline;
-}
-
-/* ====================== TABLAS ====================== */
-.table-wrapper { overflow-x: auto; }
-.table-compact {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
-}
-.table-compact thead th {
-  text-align: left;
-  background: rgba(255,255,255,0.04);
-  padding: 10px 8px;
-  color: var(--muted);
-  font-weight: 600;
-}
-.table-compact tbody td {
-  padding: 8px 8px;
-  border-top: 1px solid rgba(255,255,255,0.06);
-}
-.table-compact tbody tr:hover {
-  background: rgba(255,255,255,0.04);
-}
-.small-scroll {
-  max-height: 360px;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--accent) transparent;
-}
-
-/* ====================== FORM ELEMENTS ====================== */
-.input-sm, .select-sm {
-  background: var(--surface-light);
-  border: 1px solid #2c334d;
-  border-radius: 8px;
-  padding: 7px 10px;
-  color: var(--text);
-  font-size: 13px;
-  outline: none;
-}
-.input-sm::placeholder {
-  color: #98a0b5;
-}
-.input-sm:focus, .select-sm:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(0,180,255,0.2);
-}
-
-/* ====================== MODAL ====================== */
-.modal {
-  position: fixed;
-  inset: 0;
-  background: rgba(8, 12, 30, 0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  visibility: hidden;
-  opacity: 0;
-  transition: opacity 0.25s ease;
-  z-index: 100;
-}
-.modal.open {
-  visibility: visible;
-  opacity: 1;
-}
-.modal-panel {
-  width: 900px;
-  max-width: 96%;
-  background: var(--surface);
-  border-radius: var(--radius);
-  padding: 20px 22px;
-  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.7);
-  position: relative;
-  animation: fadeIn 0.3s ease;
-}
-.modal-close {
-  position: absolute;
-  right: 14px;
-  top: 12px;
-  background: none;
-  border: none;
-  color: var(--muted);
-  font-size: 22px;
-  cursor: pointer;
-  transition: color 0.2s;
-}
-.modal-close:hover {
-  color: var(--accent);
-}
-.modal-meta {
-  display: flex;
-  gap: 20px;
-  font-size: 14px;
-  color: var(--muted);
-  margin-bottom: 10px;
-}
-.breakdown-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.breakdown-row strong {
-  color: var(--text);
-}
-/* ============================================================
-   🎛️ ADMINISTRACIÓN DE EMISORAS — MODAL Y TABLA
-   ============================================================ */
-
-/* Modal general */
-#emisoras-modal {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 2000;
-  transition: opacity 0.25s ease;
-  opacity: 0;
-  pointer-events: none;
-}
-
-#emisoras-modal.open {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-#emisoras-modal .modal-panel.large {
-  background: #fff;
-  border-radius: 1rem;
-  width: 90%;
-  max-width: 850px;
-  padding: 1.5rem 2rem;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
-  animation: fadeInUp 0.3s ease;
-}
-
-#emisoras-modal h2 {
-  font-size: 1.3rem;
-  font-weight: 600;
-  margin-bottom: 1rem;
-}
-
-#emisoras-modal .modal-close {
-  position: absolute;
-  top: 1rem;
-  right: 1.25rem;
-  background: none;
-  border: none;
-  font-size: 1.3rem;
-  cursor: pointer;
-  opacity: 0.6;
-  transition: opacity 0.2s;
-}
-#emisoras-modal .modal-close:hover {
-  opacity: 1;
-}
-
-/* Tabla editable */
-#emisoras-admin-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.95rem;
-  margin-bottom: 1rem;
-}
-
-#emisoras-admin-table th,
-#emisoras-admin-table td {
-  padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid #ddd;
-  text-align: left;
-  vertical-align: middle;
-}
-
-#emisoras-admin-table th {
-  background: #f7f7f7;
-  font-weight: 600;
-  color: #333;
-}
-
-#emisoras-admin-table td[contenteditable="true"] {
-  background: #5f8af0;
- 
-  border-radius: 4px;
-  outline: none;
-  cursor: text;
-}
-
-#emisoras-admin-table td[contenteditable="true"]:focus {
-  background: #5f8af0;
-  box-shadow: inset 0 0 0 2px #007bff33;
-}
-
-/* Botones pequeños dentro de la tabla */
-.btn-small {
-  font-size: 0.9rem;
-  padding: 0.2rem 0.5rem;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  margin: 0 2px;
-  transition: background 0.2s;
-}
-
-.btn-small:hover {
-  opacity: 0.9;
-}
-
-.btn-small.btn-save {
-  background: #1e90ff;
-  color: #fff;
-}
-
-.btn-small.btn-delete {
-  background: #ff4c4c;
-  color: #fff;
-}
-
-/* Formulario inferior (nueva emisora) */
-.form-inline {
-  display: flex;
-  gap: 0.5rem;
-  margin-top: 1rem;
-}
-
-.form-inline input {
-  flex: 1;
-  padding: 0.45rem 0.7rem;
-  font-size: 0.9rem;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  transition: border 0.2s, box-shadow 0.2s;
-}
-
-.form-inline input:focus {
-  border-color: #007bff;
-  box-shadow: 0 0 0 2px #007bff33;
-  outline: none;
-}
-
-.btn-primary {
-  background: #007bff;
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  padding: 0.45rem 1rem;
-  font-size: 0.95rem;
-  cursor: pointer;
-  transition: background 0.25s;
-}
-
-.btn-primary:hover {
-  background: #0069d9;
-}
-
-/* Animación suave */
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(15px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-
-/* ====================== FOOTER ====================== */
-.footer {
-  text-align: center;
-  padding: 24px 0;
-  color: var(--muted);
-  font-size: 13px;
-  border-top: 1px solid rgba(255,255,255,0.05);
-  margin-top: 30px;
-}
-
-/* ====================== ANIMATIONS ====================== */
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-/* ====================== RESPONSIVE DESIGN ====================== */
-
-/* 📱 EXTRA PEQUEÑO - Móviles (320px - 479px) */
-@media (max-width: 479px) {
-  :root {
-    --radius: 10px;
-  }
-
-  .container {
-    padding: 0 16px;
-  }
-
-  /* Header ajustado */
-  .header {
-    padding: 16px 0;
-  }
-
-  .header-grid {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
-  }
-
-  .header h1 {
-    font-size: 20px;
-  }
-
-  .header-actions {
-    width: 100%;
-    flex-direction: column;
-    gap: 10px;
-    margin-top: 8px;
-  }
-
-  .btn-outline {
-    width: 100%;
-    text-align: center;
-  }
-
-  /* Layout en columna única */
-  .main-grid {
-    grid-template-columns: 1fr;
-    gap: 16px;
-    margin-top: 16px;
-  }
-
-  .left-col, .right-col {
-    gap: 16px;
-  }
-
-  /* Cards más compactas */
-  .card {
-    padding: 14px 16px;
-  }
-
-  .card-header h3 {
-    font-size: 15px;
-  }
-
-  .card-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
-  }
-
-  .card-actions {
-    width: 100%;
-    justify-content: flex-start;
-  }
-
-  /* Listas ajustadas */
-  .list {
-    max-height: 300px;
-    gap: 8px;
-  }
-
-  .list-item {
-    padding: 8px 10px;
-    flex-wrap: wrap;
-  }
-
-  .list-rank {
-    width: 28px;
-    height: 28px;
-    font-size: 12px;
-  }
-
-  .list-main {
-    margin-left: 8px;
-    flex-basis: 100%;
-    order: 3;
-    margin-top: 6px;
-  }
-
-  .list-title {
-    font-size: 13px;
-  }
-
-  .list-sub {
-    font-size: 12px;
-  }
-
-  .list-meta {
-    flex-direction: row;
-    gap: 10px;
-    align-items: center;
-  }
-
-  /* Tabla en móvil */
-  .table-compact {
-    font-size: 12px;
-  }
-
-  .table-compact thead th,
-  .table-compact tbody td {
-    padding: 6px 4px;
-  }
-
-  .small-scroll {
-    max-height: 280px;
-  }
-
-  /* Inputs más grandes para touch */
-  .input-sm, .select-sm {
-    padding: 10px 12px;
-    font-size: 14px;
-    min-height: 44px;
-  }
-
-  /* Modal responsivo */
-  .modal-panel {
-    width: 95%;
-    padding: 18px 16px;
-  }
-
-  .modal-meta {
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  /* Emisoras modal */
-  #emisoras-modal .modal-panel.large {
-    width: 96%;
-    padding: 1.2rem 1rem;
-  }
-
-  #emisoras-admin-table {
-    font-size: 0.85rem;
-  }
-
-  #emisoras-admin-table th,
-  #emisoras-admin-table td {
-    padding: 0.4rem 0.5rem;
-  }
-
-  .form-inline {
-    flex-direction: column;
-    gap: 0.4rem;
-  }
-
-  .form-inline input,
-  .btn-primary {
-    width: 100%;
-  }
-
-  /* Footer */
-  .footer {
-    padding: 18px 0;
-    font-size: 12px;
-    margin-top: 20px;
-  }
-}
-
-/* 📱 PEQUEÑO - Tablets pequeñas (480px - 767px) */
-@media (min-width: 480px) and (max-width: 767px) {
-  :root {
-    --radius: 12px;
-  }
-
-  .container {
-    padding: 0 18px;
-  }
-
-  .header {
-    padding: 18px 0;
-  }
-
-  .header h1 {
-    font-size: 22px;
-  }
-
-  .header-grid {
-    flex-wrap: wrap;
-  }
-
-  .header-actions {
-    gap: 12px;
-  }
-
-  /* Layout ajustado */
-  .main-grid {
-    grid-template-columns: 1fr;
-    gap: 18px;
-    margin-top: 18px;
-  }
-
-  .card {
-    padding: 16px 18px;
-  }
-
-  .card-header h3 {
-    font-size: 16px;
-  }
-
-  .list {
-    max-height: 350px;
-  }
-
-  .list-item {
-    padding: 9px 11px;
-  }
-
-  .list-rank {
-    width: 32px;
-    height: 32px;
-  }
-
-  .table-compact {
-    font-size: 13px;
-  }
-
-  .input-sm, .select-sm {
-    padding: 8px 11px;
-    font-size: 13px;
-    min-height: 42px;
-  }
-
-  .modal-panel {
-    width: 92%;
-  }
-
-  #emisoras-modal .modal-panel.large {
-    width: 94%;
-  }
-
-  .footer {
-    padding: 20px 0;
-    margin-top: 24px;
-  }
-}
-
-/* 🖥️ MEDIANO - Tablets grandes (768px - 1024px) */
-@media (min-width: 768px) and (max-width: 1024px) {
-  .container {
-    padding: 0 20px;
-  }
-
-  .header h1 {
-    font-size: 24px;
-  }
-
-  .main-grid {
-    grid-template-columns: 350px 1fr;
-    gap: 20px;
-    margin-top: 20px;
-  }
-
-  .card {
-    padding: 17px 19px;
-  }
-
-  .list {
-    max-height: 380px;
-  }
-
-  .table-compact {
-    font-size: 13.5px;
-  }
-
-  .small-scroll {
-    max-height: 340px;
-  }
-
-  .input-sm, .select-sm {
-    padding: 7.5px 10.5px;
-    font-size: 13.5px;
-  }
-
-  .modal-panel {
-    width: 85%;
-    max-width: 800px;
-  }
-
-  #emisoras-modal .modal-panel.large {
-    max-width: 750px;
-  }
-
-  .footer {
-    margin-top: 28px;
-  }
-}
-
-/* 🖥️ GRANDE - Escritorio estándar (1025px - 1280px) */
-@media (min-width: 1025px) and (max-width: 1280px) {
-  .main-grid {
-    grid-template-columns: 400px 1fr;
-    gap: 22px;
-  }
-
-  .container {
-    max-width: 1100px;
-  }
-
-  .modal-panel {
-    width: 900px;
-  }
-}
-
-/* 🖥️ EXTRA GRANDE - Pantallas grandes (1281px+) */
-@media (min-width: 1281px) {
-  .container {
-    max-width: 1250px;
-  }
-
-  .main-grid {
-    grid-template-columns: 420px 1fr;
-  }
-}
-
-/* ====================== OPTIMIZACIONES DE TOUCH ====================== */
-@media (hover: none) and (pointer: coarse) {
-  /* Aumentar área de click para móviles */
-  .btn-outline,
-  .btn-link,
-  .btn-small,
-  .btn-primary {
-    min-height: 44px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .list-item {
-    min-height: 48px;
-    padding: 12px;
-  }
-
-  /* Remover hover effects en dispositivos touch */
-  .card:hover {
-    transform: none;
-  }
-
-  .list-item:hover {
-    transform: none;
-  }
-
-  .btn-outline:hover {
-    transform: none;
-  }
-}
-
-/* ====================== VIEWPORT ORIENTATION ====================== */
-
-/* Landscape en móviles */
-@media (max-height: 500px) and (orientation: landscape) {
-  .header h1 {
-    font-size: 18px;
-  }
-
-  .card {
-    padding: 12px 14px;
-  }
-
-  .list {
-    max-height: 250px;
-  }
-
-  .main-grid {
-    margin-top: 12px;
-    gap: 14px;
-  }
-}
-
-/* ====================== MEDIA QUERIES AVANZADAS ====================== */
-
-/* Soportar pantallas de alta densidad */
-@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
-  body {
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-  }
-}
-
-/* Pantallas retina */
-@media (min-width: 1920px) {
-  :root {
-    --radius: 16px;
-  }
-
-  .container {
-    max-width: 1400px;
-  }
-
-  .header h1 {
-    font-size: 28px;
-  }
-
-  .card {
-    padding: 20px 24px;
-  }
-
-  .main-grid {
-    grid-template-columns: 450px 1fr;
-    gap: 28px;
-  }
-}
-
-/* Modo oscuro en dispositivos que lo soportan */
-@media (prefers-color-scheme: dark) {
-  body {
-    color-scheme: dark;
-  }
-}
-
-/* Reducción de movimiento para usuarios sensibles */
-@media (prefers-reduced-motion: reduce) {
-  * {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
-}
-
-/* ====================== FIXES ESPECÍFICOS PARA NAVEGADORES ====================== */
-
-/* iOS Safari */
-@supports (-webkit-touch-callout: none) {
-  .input-sm, .select-sm {
-    font-size: 16px; /* Evitar zoom automático */
-  }
-
-  body {
-    -webkit-user-select: none;
-    -webkit-touch-callout: none;
-  }
-}
-
-/* Firefox */
-@-moz-document url-prefix() {
-  .list {
-    scrollbar-width: thin;
-  }
-}
+/* ==========================================================================
+   RADIO MONITOR — style.css (REDISEÑO PREMIUM COMPLETO)
+   - Fondo claro, interfaz espaciosa y profesional.
+   - Incluye soporte completo para el modal de "Administrar emisoras",
+     tablas editables, botones, notificaciones y responsive.
+   - Diseñado para trabajar sin tocar tu HTML/JS.
+   ========================================================================== */
+
+/* -------------------------
+   VARIABLES / PALETA
+   ------------------------- */
+:root{
+  --bg: #ffffff;                     /* página */
+  --panel: #fbfdff;                  /* paneles y tarjetas */
+  --muted: #6b7280;                  /* texto secundario */
+  --text: #0b1320;                   /* texto principal */
+  --accent: #0a84ff;                 /* acento principal */
+  --accent-2: #005ed6;               /* acento secundario */
+  --success: #00bfa6;
+  --danger: #ff4d4f;
+  --glass: rgba(13,18,28,0.04);
+  --glass-2: rgba(2,6,23,0.03);
+  --card-shadow: 0 18px 50px rgba(12,18,31,0.06);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --font: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  --transition: 220ms cubic-bezier(.2,.9,.3,1);
+  --max-width: 1250px;
+}
+
+/* -------------------------
+   RESET Y BASE
+   ------------------------- */
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  background: linear-gradient(180deg,#f7fbff 0%, #ffffff 100%);
+  color:var(--text);
+  font-family:var(--font);
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  line-height:1.45;
+  font-size:15px;
+}
+
+/* enlaces */
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* container */
+.container{
+  max-width:var(--max-width);
+  margin:0 auto;
+  padding:0 20px;
+}
+
+/* utilidades */
+.muted{color:var(--muted)}
+.small{font-size:13px;color:var(--muted)}
+.center{display:flex;align-items:center;justify-content:center}
+.kv{font-weight:700;color:var(--text)}
+
+/* -------------------------
+   HEADER (compatible con tu markup)
+   ------------------------- */
+.header{
+  background:linear-gradient(90deg,var(--accent-2),var(--accent));
+  color:#fff;
+  padding:20px 0;
+  box-shadow:0 8px 30px rgba(2,6,23,0.06);
+  border-bottom:1px solid rgba(255,255,255,0.06);
+}
+.header-grid{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:16px;
+  flex-wrap:wrap;
+}
+.header h1{font-size:22px;margin:0;font-weight:700}
+.subtitle{font-size:13px;opacity:.95;margin-top:4px}
+.header-actions{display:flex;align-items:center;gap:12px}
+.small-muted{font-size:13px;color:rgba(255,255,255,0.9)}
+
+/* botones header */
+.btn-outline{
+  background:transparent;border:1px solid rgba(255,255,255,0.25);color:#fff;padding:8px 14px;border-radius:10px;cursor:pointer;font-weight:700;transition:var(--transition);
+}
+.btn-outline:hover{background:rgba(255,255,255,0.08);transform:translateY(-2px)}
+
+/* -------------------------
+   LAYOUT (main grid) - compatible con .main-grid, left-col/right-col
+   ------------------------- */
+.main-grid{
+  display:grid;
+  grid-template-columns:420px 1fr;
+  gap:24px;
+  margin-top:26px;
+  align-items:start;
+}
+.left-col,.right-col{display:flex;flex-direction:column;gap:20px}
+
+/* -------------------------
+   CARDS
+   ------------------------- */
+.card{
+  background:var(--panel);
+  border-radius:var(--radius);
+  padding:18px 20px;
+  box-shadow:var(--card-shadow);
+  border:1px solid var(--glass-2);
+  transition:transform .15s ease, box-shadow .15s ease;
+}
+.card:hover{transform:translateY(-6px);box-shadow:0 26px 80px rgba(12,18,31,0.08)}
+.card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.card-header h3{color:var(--accent);font-size:16px;margin:0}
+.card-actions{display:flex;gap:10px;align-items:center}
+
+/* small card for two-columns */
+.small-cards{display:flex;gap:12px}
+.card-short{flex:1;background:linear-gradient(180deg,#fff,#fbfdff);padding:14px;border-radius:10px;border:1px solid var(--glass-2)}
+
+/* -------------------------
+   LISTAS (Top Songs)
+   ------------------------- */
+.list{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  max-height:520px;
+  overflow-y:auto;
+  padding-right:6px;
+}
+
+/* improved scrollbar */
+.list::-webkit-scrollbar{width:10px}
+.list::-webkit-scrollbar-track{background:transparent}
+.list::-webkit-scrollbar-thumb{background:linear-gradient(180deg,var(--accent),var(--accent-2));border-radius:10px;opacity:.8}
+
+/* list items */
+.list-item{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  background:linear-gradient(180deg,#fff,#fbfdff);
+  border-radius:12px;
+  padding:12px;
+  border:1px solid rgba(2,6,23,0.04);
+  transition:transform var(--transition), box-shadow var(--transition);
+  gap:12px;
+}
+.list-item:hover{transform:translateY(-6px);box-shadow:0 16px 40px rgba(12,18,31,0.06)}
+.list-rank{
+  width:44px;height:44px;border-radius:10px;background:linear-gradient(180deg,var(--accent-2),var(--accent));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;flex-shrink:0;
+}
+.list-main{flex:1;min-width:0;margin-left:10px}
+.list-title{font-weight:800;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.list-sub{font-size:13px;color:var(--muted);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.list-meta{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.plays{color:var(--accent);font-weight:800}
+.btn-link{background:none;border:0;color:var(--accent);cursor:pointer;font-weight:700}
+.btn-link:hover{text-decoration:underline}
+
+/* empty state */
+.empty{padding:18px;text-align:center;border-radius:10px;background:linear-gradient(180deg,#fff,#fbfdff);color:var(--muted)}
+
+/* -------------------------
+   TOP ARTISTS + MINI LISTS
+   ------------------------- */
+.compact-list{list-style:none;padding-left:18px;margin:0}
+.compact-list li{padding:6px 0;display:flex;justify-content:space-between;gap:12px}
+.compact-list li .muted{color:var(--muted)}
+
+/* -------------------------
+   CHARTS
+   ------------------------- */
+.chart-wrap{height:260px;border-radius:10px;overflow:hidden;padding:6px;border:1px solid var(--glass-2);background:linear-gradient(180deg,#fff,#fbfdff)}
+
+/* -------------------------
+   TABLAS
+   ------------------------- */
+.table-wrapper{overflow-x:auto;background:transparent;border-radius:10px}
+.table-compact{width:100%;border-collapse:collapse;font-size:14px;background:var(--panel);border-radius:10px;overflow:hidden}
+.table-compact thead th{
+  text-align:left;background:transparent;padding:12px 10px;color:var(--muted);font-weight:700;border-bottom:1px solid rgba(2,6,23,0.04)
+}
+.table-compact tbody td{padding:10px 10px;border-bottom:1px solid rgba(2,6,23,0.03)}
+.table-compact tbody tr:hover{background:linear-gradient(90deg,rgba(10,132,255,0.02),transparent)}
+.table-compact td.station-name{font-weight:700}
+
+/* small scroll area */
+.small-scroll{max-height:360px;overflow:auto;padding-right:6px}
+
+/* -------------------------
+   FORM ELEMENTS
+   ------------------------- */
+.input-sm, .select-sm{
+  background:#fff;border:1px solid var(--glass-2);border-radius:10px;padding:8px 10px;font-size:14px;color:var(--text);outline:none;min-width:120px;
+  transition:box-shadow var(--transition),border-color var(--transition);
+}
+.input-sm::placeholder{color:#bfc7d6}
+.input-sm:focus,.select-sm:focus{box-shadow:0 8px 30px rgba(10,132,255,0.08);border-color:var(--accent)}
+
+/* botones */
+.btn-ghost{background:transparent;border:1px dashed var(--glass-2);padding:6px 10px;border-radius:8px;cursor:pointer}
+.btn-primary{background:var(--accent);color:#fff;border:0;padding:9px 14px;border-radius:10px;cursor:pointer;font-weight:800;transition:transform var(--transition),box-shadow var(--transition)}
+.btn-primary:hover{transform:translateY(-3px);box-shadow:0 8px 30px rgba(10,132,255,0.08)}
+.btn-small{padding:6px 8px;border-radius:8px;border:0;background:#f3f6fb;cursor:pointer}
+
+/* boton guardar/eliminar (tabla admin) */
+.btn-small.btn-save{background:linear-gradient(180deg,#0a84ff,#0070d9);color:#fff}
+.btn-small.btn-delete{background:linear-gradient(180deg,#ff6b6b,#ff3b3b);color:#fff}
+
+/* inputs del modal de emisoras (editable) */
+#emisoras-admin-table td[contenteditable="true"]{
+  background:#fbfdff;
+  border-radius:6px;
+  padding:8px;
+  outline:none;
+  min-width:120px;
+}
+#emisoras-admin-table td[contenteditable="true"]:focus{box-shadow:0 6px 26px rgba(10,132,255,0.06);border-radius:6px}
+
+/* -------------------------
+   MODAL (mejorada)
+   ------------------------- */
+/* general modal */
+.modal{
+  position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(2,6,23,0.38);
+  visibility:hidden;opacity:0;transition:opacity 180ms ease,visibility 180ms ease;z-index:999;
+}
+.modal.open{visibility:visible;opacity:1}
+.modal-panel{
+  width:900px;max-width:96%;background:#fff;border-radius:14px;padding:18px;border:1px solid var(--glass-2);box-shadow:0 40px 120px rgba(2,6,23,0.16);position:relative;overflow:hidden;
+}
+.modal-close{position:absolute;right:14px;top:10px;border:0;background:none;font-size:20px;color:var(--muted);cursor:pointer}
+.modal-meta{display:flex;gap:18px;font-size:14px;color:var(--muted);margin-bottom:10px}
+
+/* emisoras modal (large) - diseño completo para administrar emisoras */
+#emisoras-modal .modal-panel.large{
+  background:#ffffff;border-radius:14px;padding:18px 20px;max-width:980px;width:94%;box-shadow:0 30px 90px rgba(2,6,23,0.15);
+  border:1px solid rgba(2,6,23,0.04)
+}
+#emisoras-modal h2{margin:0 0 12px 0;font-size:18px;color:var(--text)}
+#emisoras-admin-table{width:100%;border-collapse:collapse;font-size:14px;margin-bottom:14px}
+#emisoras-admin-table thead th{background:transparent;padding:10px 8px;text-align:left;color:var(--muted);font-weight:700;border-bottom:1px solid rgba(2,6,23,0.04)}
+#emisoras-admin-table td{padding:10px 8px;border-bottom:1px solid rgba(2,6,23,0.03);vertical-align:middle}
+#emisoras-admin-table tr:hover td{background:linear-gradient(90deg,rgba(0,0,0,0.01),transparent)}
+
+/* form-inline (agregar nueva emisora) */
+.form-inline{display:flex;gap:10px;align-items:center;margin-top:8px;flex-wrap:wrap}
+.form-inline input{flex:1;padding:9px 10px;border-radius:8px;border:1px solid #e6eefc;background:#fbfdff}
+.form-inline input:focus{box-shadow:0 6px 26px rgba(10,132,255,0.06);outline:none;border-color:var(--accent)}
+
+/* -------------------------
+   FOOTER
+   ------------------------- */
+.footer{margin-top:28px;padding:24px 0;border-top:1px solid rgba(2,6,23,0.03);color:var(--muted);display:flex;justify-content:space-between;font-size:13px}
+.footer small{display:block}
+
+/* -------------------------
+   RESPONSIVE
+   ------------------------- */
+@media (max-width:1100px){
+  .main-grid{grid-template-columns:1fr;gap:18px}
+  .left-col,.right-col{gap:14px}
+  .list{max-height:420px}
+  .card{padding:14px;border-radius:10px}
+  .table-compact thead th{padding:10px}
+}
+
+@media (max-width:760px){
+  .header-grid{flex-direction:column;align-items:flex-start;gap:12px;padding:8px 0}
+  .header h1{font-size:18px}
+  .list-item{flex-direction:row;gap:10px;padding:10px}
+  .list-main{margin-left:8px}
+  .list-title{font-size:14px}
+  .table-compact td{padding:8px}
+  .chart-wrap{height:180px}
+  .card-header h3{font-size:15px}
+  .form-inline{flex-direction:column}
+  .form-inline input,.btn-primary{width:100%}
+}
+
+/* mobile touch */
+@media (hover:none) and (pointer:coarse){
+  .btn-outline,.btn-link,.btn-primary,.btn-ghost{min-height:44px;display:inline-flex;align-items:center;justify-content:center}
+  .list-item{padding:12px}
+}
+
+/* -------------------------
+   ACCESSIBILITY / FOCUS
+   ------------------------- */
+:focus{outline:none}
+button:focus, .input-sm:focus, .select-sm:focus, [contenteditable="true"]:focus{
+  box-shadow:0 6px 30px rgba(10,132,255,0.12);
+  border-color:var(--accent);
+  outline:2px solid rgba(10,132,255,0.06);
+  border-radius:8px;
+}
+
+/* -------------------------
+   POLISH: text overflow & animations
+   ------------------------- */
+.list-title, .list-sub, .song-artist, .play-title {
+  display:block; max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+@keyframes floatUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+.list-item{animation:floatUp .26s ease both}
+
+/* big screens tweak */
+@media (min-width:1600px){
+  :root{--max-width:1400px}
+  .list-rank{width:52px;height:52px}
+}
+
+/* ===========================
+   Reglas específicas que cubren TODOS los elementos del HTML/JS
+   - .btn-save, .btn-delete, #emisoras-admin-table, .edit-*,
+     #manage-stations, #emisoras-modal, #new-name, #new-url, #new-country
+   están contemplados en las reglas anteriores.
+   =========================== */
+
+/* End of file */
