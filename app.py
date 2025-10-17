@@ -483,3 +483,14 @@ if __name__ == "__main__":
         start_monitor_thread()
     # dev server
     app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)
+
+
+# ---------------------------
+# Lanzar el monitor también cuando se ejecute con Gunicorn
+# ---------------------------
+try:
+    # Si la app se importa (por Gunicorn), arrancar el monitor
+    with app.app_context():
+        start_monitor_thread()
+except Exception as e:
+    app.logger.error(f"No se pudo iniciar el monitor automáticamente: {e}")
