@@ -1,0 +1,106 @@
+[
+  {
+    "nombre": "Monumentan 100.3 fm " ,
+    "ciudad": "Desconocida",
+    "genero": "Desconocido",
+    "url_stream": "https://radio2.grupointernet.com/8103/stream",
+    "plataforma": "Grupo Internet",
+    "sitio_web": ""
+  },
+  {
+    "nombre": "Original Santiago",
+    "ciudad": "Santiago",
+    "genero": "Desconocido",
+    "url_stream": "https://radio.telemicro.com.do/originalsantiago",
+    "plataforma": "Telemicro",
+    "sitio_web": "https://radio.telemicro.com.do"
+  },
+  {
+    "nombre": "Ke Buena Santiago",
+    "ciudad": "Santiago",
+    "genero": "Variado",
+    "url_stream": "https://radio.telemicro.com.do/kebuenasantiago",
+    "plataforma": "Telemicro",
+    "sitio_web": "https://radio.telemicro.com.do"
+  },
+  {
+    "nombre": "La Kalle MAO",
+    "ciudad": "Mao",
+    "genero": "Urbano",
+    "url_stream": "https://radio.telemicro.com.do/lakallemao",
+    "plataforma": "Telemicro",
+    "sitio_web": "https://radio.telemicro.com.do"
+  },
+  {
+    "nombre": "Grupo Medios del Norte",
+    "ciudad": "Desconocida",
+    "genero": "Desconocido",
+    "url_stream": "https://streaming.grupomediosdelnorte.com:8002",
+    "plataforma": "Grupo Medios del Norte",
+    "sitio_web": ""
+  },
+  {
+    "nombre": "Emisora Zeno 1",
+    "ciudad": "Desconocida",
+    "genero": "Desconocido",
+    "url_stream": "https://stream.zeno.fm/r4tk2hfksfhvv",
+    "plataforma": "Zeno.fm",
+    "sitio_web": "https://zeno.fm/"
+  },
+  {
+    "nombre": "Emisora Zeno 2",
+    "ciudad": "Desconocida",
+    "genero": "Desconocido",
+    "url_stream": "https://stream.zeno.fm/yt09nbevaphvv",
+    "plataforma": "Zeno.fm",
+    "sitio_web": "https://zeno.fm/"
+  },
+  {
+    "nombre": "Emisora Zeno 3",
+    "ciudad": "Desconocida",
+    "genero": "Desconocido",
+    "url_stream": "https://stream-176.zeno.fm/fvblmqsiip1tv",
+    "plataforma": "Zeno.fm",
+    "sitio_web": "https://zeno.fm/"
+  },
+  {
+    "nombre": "Emisora Zeno 4",
+    "ciudad": "Desconocida",
+    "genero": "Desconocido",
+    "url_stream": "https://stream-140.zeno.fm/dbnpgku8na0uv",
+    "plataforma": "Zeno.fm",
+    "sitio_web": "https://zeno.fm/"
+  },
+  {
+    "nombre": "La Kalle San Juan",
+    "ciudad": "San Juan",
+    "genero": "Urbano",
+    "url_stream": "https://radio.telemicro.com.do/lakallesjm",
+    "plataforma": "Telemicro",
+    "sitio_web": "https://radio.telemicro.com.do"
+  },
+  {
+    "nombre": "Host Lagarto FM",
+    "ciudad": "Desconocida",
+    "genero": "Desconocido",
+    "url_stream": "https://radio.hostlagarto.com:7048/stream",
+    "plataforma": "Host Lagarto",
+    "sitio_web": ""
+  },
+  {
+    "nombre": "Emisora Zeno 5",
+    "ciudad": "Desconocida",
+    "genero": "Desconocido",
+    "url_stream": "https://stream.zeno.fm/f3nffca3jsfuv",
+    "plataforma": "Zeno.fm",
+    "sitio_web": "https://zeno.fm/"
+  },
+  {
+    "nombre": "La Kalle San Rafael",
+    "ciudad": "San Rafael",
+    "genero": "Urbano",
+    "url_stream": "https://radio.telemicro.com.do/lakallesr",
+    "plataforma": "Telemicro",
+    "sitio_web": "https://radio.telemicro.com.do"
+  }
+]

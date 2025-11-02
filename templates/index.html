@@ -1,0 +1,996 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Radio Monitor — Panel</title>
+
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header class="header">
+    <div class="container header-grid">
+      <div>
+        <h1>Radio Monitor</h1>
+        <p class="subtitle">Monitoreo automático — Estadísticas y última actividad</p>
+      </div>
+      <div class="header-actions">
+        <div class="small-muted">Intervalo: {{ config.MONITOR_INTERVAL }}s</div>
+        <button id="refresh-btn" class="btn-outline">Actualizar ahora</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container main-grid">
+
+    <aside class="left-col">
+      <!-- Filtro por País/Región (NUEVA FUNCIONALIDAD) -->
+      <section class="card">
+        <div class="card-header">
+          <h3>Filtro por región</h3>
+        </div>
+        <div class="form-inline" style="padding: 1rem;">
+          <select id="country-filter" class="select-sm" style="flex: 1;">
+            <option value="">🌎 Global (todos los países)</option>
+            <!-- Se carga dinámicamente desde /api/stats/countries -->
+          </select>
+          <select id="period-filter" class="select-sm">
+            <option value="all">Todo el tiempo</option>
+            <option value="weekly">Última semana</option>
+            <option value="monthly">Último mes</option>
+          </select>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-header">
+          <h3>Top canciones</h3>
+          <div class="card-actions">
+            <button id="export-top-csv" class="btn-ghost">Exportar CSV</button>
+            <select id="top-limit" class="select-sm">
+              <option value="10">Top 10</option>
+              <option value="20" selected>Top 20</option>
+              <option value="50">Top 50</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="list" id="top-songs-list">
+          {% if top_songs %}
+            {% for s in top_songs %}
+            <div class="list-item" data-master-id="{{ s.id if s.id else '' }}" data-master-key="{{ s.master_key if s.master_key else '' }}">
+              <div class="list-rank">{{ loop.index }}</div>
+              <div class="list-main">
+                <!-- CORREGIDO: Validar master_key antes de cargar imagen -->
+                {% if s.master_key %}
+                  <img class="thumb" src="/image/song/{{ s.master_key }}" alt="Portada" loading="lazy"
+                       onerror="this.onerror=null; this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22%3E%3Crect fill=%22%23333%22 width=%2248%22 height=%2248%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23888%22 font-size=%2214%22%3E🎵%3C/text%3E%3C/svg%3E';">
+                {% else %}
+                  <img class="thumb" src="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22%3E%3Crect fill=%22%23333%22 width=%2248%22 height=%2248%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23888%22 font-size=%2214%22%3E🎵%3C/text%3E%3C/svg%3E" alt="Portada">
+                {% endif %}
+                <div class="list-title">{{ s.titulo }}</div>
+                <div class="list-sub">{{ s.artista }}</div>
+              </div>
+              <div class="list-meta">
+                <div class="plays">{{ s.total_plays or 0 }}</div>
+                <button class="btn-link btn-detail" data-master-id="{{ s.id if s.id else '' }}" data-master-key="{{ s.master_key if s.master_key else '' }}">Detalle</button>
+              </div>
+            </div>
+            {% endfor %}
+          {% else %}
+            <div class="empty">No hay top disponible — espera a que se generen datos.</div>
+          {% endif %}
+        </div>
+      </section>
+
+      <section class="card small-cards">
+        <div class="card-short">
+          <h4>Top artistas</h4>
+          <ol class="compact-list" id="top-artists-list">
+            {% if top_artists %}
+              {% for a, plays in top_artists %}
+                <li>{{ a or '—' }} <span class="muted">({{ plays }})</span></li>
+              {% endfor %}
+            {% else %}
+              <li class="muted">Sin datos</li>
+            {% endif %}
+          </ol>
+        </div>
+
+        <div class="card-short">
+          <h4>Plays por emisora</h4>
+          <ol class="compact-list" id="plays-per-station-list">
+            {% if plays_per_station %}
+              {% for r in plays_per_station %}
+                <li>{{ r.nombre }} <span class="muted">({{ r.plays or 0 }})</span></li>
+              {% endfor %}
+            {% else %}
+              <li class="muted">Sin datos</li>
+            {% endif %}
+          </ol>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-header">
+          <h3>Actividad (últimas horas)</h3>
+          <div class="card-actions">
+            <select id="timeseries-hours" class="select-sm">
+              <option value="6">6h</option>
+              <option value="12">12h</option>
+              <option value="24" selected>24h</option>
+              <option value="72">72h</option>
+            </select>
+          </div>
+        </div>
+        <div style="height:260px">
+          <canvas id="timeseries-chart"></canvas>
+        </div>
+      </section>
+    </aside>
+
+    <section class="right-col">
+      <section class="card">
+        <div class="card-header">
+          <h3>Emisoras registradas</h3>
+          <div class="card-actions">
+            <input id="filter-station" class="input-sm" placeholder="Buscar emisora..." />
+            <button id="manage-stations" class="btn-outline">Administrar</button>
+          </div>
+        </div>
+
+        <div class="table-wrapper">
+          <table class="table-compact" id="emisoras-table" role="table">
+            <thead>
+              <tr>
+                <th>Emisora</th>
+                <th>Última canción</th>
+                <th>Última actualización</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for e in emisoras %}
+                <tr data-pais="{{ e.pais or '' }}">
+                  <td class="station-name">{{ e.nombre }}</td>
+                  <td>{{ e.ultima_cancion or 'Cortes comerciales' }}</td>
+                  <td>{{ e.ultima_actualizacion.strftime('%Y-%m-%d %H:%M:%S') if e.ultima_actualizacion else '---' }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-header">
+          <h3>Últimas reproducciones</h3>
+          <div class="card-actions">
+            <input id="filter-play" class="input-sm" placeholder="Buscar artista / título..." />
+            <button id="export-plays-csv" class="btn-ghost">Exportar</button>
+          </div>
+        </div>
+
+        <div class="table-wrapper small-scroll">
+          <table class="table-compact" id="latest-table">
+            <thead>
+              <tr>
+                <th>Hora</th>
+                <th>Emisora</th>
+                <th>Artista</th>
+                <th>Título</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for s in ultimas %}
+                <tr data-emisora-id="{{ s.emisora_id }}">
+                  <td>{{ s.fecha_reproduccion.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                  <td>
+                    {% set emis = s.emisora_id %}
+                    {% for e in emisoras %}
+                      {% if e.id == emis %}
+                        {{ e.nombre }}
+                      {% endif %}
+                    {% endfor %}
+                  </td>
+                  <td>
+                    <!-- Thumb del artista con fallback SVG inline -->
+                    <img class="artist-thumb" src="/image/artist/{{ (s.artista|urlencode) }}" alt="Artista" loading="lazy"
+                         onerror="this.onerror=null; this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2232%22 height=%2232%22%3E%3Ccircle cx=%2216%22 cy=%2216%22 r=%2216%22 fill=%22%23444%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23999%22 font-size=%2212%22%3E👤%3C/text%3E%3C/svg%3E';">
+                    {{ s.artista or '—' }}
+                  </td>
+                  <td class="play-title">{{ s.titulo or '—' }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <small>Desarrollado por: Villa Labs | Contacto: +57-310-5337362</small>
+    </div>
+  </footer>
+
+  <!-- Modal de detalle de canción -->
+  <div id="song-modal" class="modal" aria-hidden="true">
+    <div class="modal-panel">
+      <button id="modal-close" class="modal-close" aria-label="Cerrar">✕</button>
+      <div id="modal-content">
+        <h2 id="modal-title">Título — Artista</h2>
+        <div class="modal-meta">
+          <div><strong>Total reproducciones:</strong> <span id="modal-plays"></span></div>
+          <div><strong>Emisoras distintas:</strong> <span id="modal-emisoras"></span></div>
+          <div><strong>Primera reproducción:</strong> <span id="modal-first"></span></div>
+          <div><strong>Última reproducción:</strong> <span id="modal-last"></span></div>
+        </div>
+
+        <h4>Por emisora</h4>
+        <div id="modal-breakdown" class="breakdown-list"></div>
+
+        <h4>Últimos plays</h4>
+        <div class="table-wrapper small-scroll" style="max-height:240px">
+          <table class="table-compact" id="modal-plays-table">
+            <thead><tr><th>Hora</th><th>Emisora</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de administración de emisoras -->
+  <div id="emisoras-modal" class="modal" aria-hidden="true">
+    <div class="modal-panel large">
+      <button id="emisoras-close" class="modal-close" aria-label="Cerrar">✕</button>
+      <h2>Administrar emisoras</h2>
+      <div class="table-wrapper small-scroll">
+        <table class="table-compact" id="emisoras-admin-table">
+          <thead>
+            <tr><th>Nombre</th><th>URL Stream</th><th>País</th><th>Acciones</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="form-inline">
+        <input id="new-name" placeholder="Nombre" />
+        <input id="new-url" placeholder="URL Stream" />
+        <input id="new-country" placeholder="País (opcional)" />
+        <button id="add-station" class="btn-primary">Agregar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ============================================================================
+    // API ENDPOINTS - Incluye nuevos endpoints por país
+    // ============================================================================
+    const api = {
+      topSongs: (limit=20) => `/api/stats/top_songs?limit=${limit}`,
+      topByCountry: (country, limit=20, period='all') => `/api/stats/top_by_country/${encodeURIComponent(country)}?limit=${limit}&period=${period}`,
+      countries: () => `/api/stats/countries`,
+      topWeekly: (limit=20) => `/api/stats/top_weekly?limit=${limit}`,
+      topMonthly: (limit=20) => `/api/stats/top_monthly?limit=${limit}`,
+      timeseries: (hours=24) => `/api/stats/timeseries?hours=${hours}`,
+      songDetail: (master_key) => `/api/stats/song/${encodeURIComponent(master_key)}`,
+      topByStation: (id, limit=20) => `/api/stats/top_by_station/${id}?limit=${limit}`,
+      currentPlay: (id) => `/api/stats/current_play/${id}`
+    };
+
+    // ============================================================================
+    // UTILIDADES
+    // ============================================================================
+    function showNotification(message, type = 'info') {
+      const notification = document.createElement('div');
+      notification.style.cssText = 'position:fixed;top:20px;right:20px;background:' + (type === 'error' ? '#ff4c4c' : '#00e8a2') + ';color:#fff;padding:12px 16px;border-radius:8px;z-index:10000;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,0.3);';
+      notification.textContent = message;
+      document.body.appendChild(notification);
+      setTimeout(() => notification.remove(), 3000);
+    }
+
+    function rowsToCSV(rows, headers) {
+      const esc = v => `"${String(v || '').replace(/"/g, '""')}"`;
+      const head = headers.map(esc).join(',');
+      const body = rows.map(r => headers.map(h => esc(r[h] || '')).join(',')).join('\n');
+      return head + '\n' + body;
+    }
+
+    // Función helper para crear imagen SVG por defecto
+    function getDefaultSongImage() {
+      return 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22%3E%3Crect fill=%22%23333%22 width=%2248%22 height=%2248%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23888%22 font-size=%2214%22%3E🎵%3C/text%3E%3C/svg%3E';
+    }
+
+    function getDefaultStationImage() {
+      return 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2224%22 height=%2224%22%3E%3Crect fill=%22%23555%22 width=%2224%22 height=%2224%22 rx=%224%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23aaa%22 font-size=%2210%22%3E📻%3C/text%3E%3C/svg%3E';
+    }
+
+    // ============================================================================
+    // CARGA DE PAÍSES (NUEVA FUNCIONALIDAD)
+    // ============================================================================
+    let currentCountry = '';
+    let currentPeriod = 'all';
+    let currentLimit = 20;
+
+    async function loadCountries() {
+      try {
+        const res = await fetch(api.countries());
+        if (!res.ok) throw new Error('Error cargando países');
+        const countries = await res.json();
+        
+        const select = document.getElementById('country-filter');
+        const currentOption = select.querySelector('option[value=""]');
+        
+        select.innerHTML = '';
+        select.appendChild(currentOption);
+        
+        countries.forEach(c => {
+          const option = document.createElement('option');
+          option.value = c.pais;
+          option.textContent = `${c.pais} (${c.emisoras} emisoras, ${c.canciones} canciones)`;
+          select.appendChild(option);
+        });
+      } catch (err) {
+        console.error('Error cargando países:', err);
+      }
+    }
+
+    // ============================================================================
+    // ACTUALIZACIÓN DE TOP CON FILTROS (NUEVA FUNCIONALIDAD)
+    // ============================================================================
+    async function updateTopByFilter() {
+      const country = document.getElementById('country-filter').value;
+      const period = document.getElementById('period-filter').value;
+      const limit = parseInt(document.getElementById('top-limit').value || 20);
+      
+      currentCountry = country;
+      currentPeriod = period;
+      currentLimit = limit;
+
+      try {
+        let data;
+        
+        if (country) {
+          const res = await fetch(api.topByCountry(country, limit, period));
+          if (!res.ok) throw new Error('Error cargando top por país');
+          data = await res.json();
+        } else if (period === 'weekly') {
+          const res = await fetch(api.topWeekly(limit));
+          if (!res.ok) throw new Error('Error cargando top semanal');
+          data = await res.json();
+        } else if (period === 'monthly') {
+          const res = await fetch(api.topMonthly(limit));
+          if (!res.ok) throw new Error('Error cargando top mensual');
+          data = await res.json();
+        } else {
+          const res = await fetch(api.topSongs(limit));
+          if (!res.ok) throw new Error('Error cargando top global');
+          data = await res.json();
+        }
+
+        const list = document.getElementById('top-songs-list');
+        if (!data || data.length === 0) {
+          list.innerHTML = '<div class="empty">No hay datos disponibles para esta selección</div>';
+          return;
+        }
+
+        list.innerHTML = data.map((s, idx) => {
+          const masterKey = s.master_key || s.id || '';
+          const masterId = s.id || '';
+          
+          let rankIndicator = '';
+          if (s.is_new) {
+            rankIndicator = '<span class="rank-badge new">NUEVO</span>';
+          } else if (s.diff !== undefined && s.diff !== null) {
+            if (s.diff > 0) {
+              rankIndicator = `<span class="rank-badge up">↑ ${s.diff}</span>`;
+            } else if (s.diff < 0) {
+              rankIndicator = `<span class="rank-badge down">↓ ${Math.abs(s.diff)}</span>`;
+            }
+          }
+
+          return `
+            <div class="list-item" data-master-id="${masterId}" data-master-key="${masterKey}">
+              <div class="list-rank">${idx + 1}</div>
+              <div class="list-main">
+                <img class="thumb" src="${masterKey ? '/image/song/' + masterKey : getDefaultSongImage()}" alt="Portada" loading="lazy" onerror="this.onerror=null; this.src='${getDefaultSongImage()}';">
+                <div class="list-title">${s.titulo || '—'}</div>
+                <div class="list-sub">${s.artista || '—'}</div>
+              </div>
+              <div class="list-meta">
+                <div class="plays">${s.total_plays || 0}</div>
+                ${rankIndicator}
+                <button class="btn-link btn-detail" data-master-id="${masterId}" data-master-key="${masterKey}">Detalle</button>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+      } catch (err) {
+        console.error('Error actualizando top:', err);
+        showNotification('Error cargando datos', 'error');
+      }
+    }
+
+    // Event listeners para filtros
+    document.getElementById('country-filter').addEventListener('change', updateTopByFilter);
+    document.getElementById('period-filter').addEventListener('change', updateTopByFilter);
+    document.getElementById('top-limit').addEventListener('change', updateTopByFilter);
+
+    // ============================================================================
+    // GRÁFICA DE SERIES TEMPORALES
+    // ============================================================================
+    let timeseriesChart = null;
+    async function loadTimeseries(hours = 24) {
+      try {
+        const res = await fetch(api.timeseries(hours));
+        if (!res.ok) throw new Error('Error cargando timeseries');
+        const data = await res.json();
+        if (!data || data.length === 0) {
+          document.getElementById('timeseries-chart').style.display = 'none';
+          return;
+        }
+        document.getElementById('timeseries-chart').style.display = 'block';
+        const labels = data.map(r => new Date(r.hour).toLocaleString());
+        const values = data.map(r => r.plays);
+        const ctx = document.getElementById('timeseries-chart').getContext('2d');
+        if (timeseriesChart) timeseriesChart.destroy();
+        timeseriesChart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels,
+            datasets: [{
+              label: 'Reproducciones por hora',
+              data: values,
+              tension: 0.25,
+              fill: true,
+              borderColor: 'rgb(0, 180, 255)',
+              backgroundColor: 'rgba(0, 180, 255, 0.1)'
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: { x: { ticks: { maxRotation: 45 } } }
+          }
+        });
+      } catch (err) {
+        console.error('Error en timeseries:', err);
+      }
+    }
+
+    document.getElementById('timeseries-hours').addEventListener('change', (e) => {
+      loadTimeseries(parseInt(e.target.value));
+    });
+
+    // ============================================================================
+    // MODAL DE DETALLE DE CANCIÓN
+    // ============================================================================
+    const modal = document.getElementById('song-modal');
+    const modalTitle = document.getElementById('modal-title');
+    const modalPlays = document.getElementById('modal-plays');
+    const modalEmisoras = document.getElementById('modal-emisoras');
+    const modalFirst = document.getElementById('modal-first');
+    const modalLast = document.getElementById('modal-last');
+    const modalBreakdown = document.getElementById('modal-breakdown');
+    const modalPlaysTableBody = document.querySelector('#modal-plays-table tbody');
+
+    document.getElementById('modal-close').addEventListener('click', closeModal);
+
+    async function openSongModal(master_key) {
+      if (!master_key) {
+        showNotification('No hay identificador de canción', 'error');
+        return;
+      }
+
+      modal.setAttribute('aria-hidden', 'false');
+      modal.classList.add('open');
+      modalTitle.textContent = 'Cargando...';
+      modalPlays.textContent = '—';
+      modalEmisoras.textContent = '—';
+      modalFirst.textContent = '—';
+      modalLast.textContent = '—';
+      modalBreakdown.innerHTML = '';
+      modalPlaysTableBody.innerHTML = '';
+      
+      try {
+        const res = await fetch(api.songDetail(master_key));
+        if (!res.ok) {
+          modalTitle.textContent = 'Error cargando detalles';
+          return;
+        }
+        const data = await res.json();
+        modalTitle.textContent = `${data.titulo || '—'} — ${data.artista || '—'}`;
+        modalPlays.textContent = data.total_plays || 0;
+        modalEmisoras.textContent = data.total_emisoras || 0;
+        modalFirst.textContent = data.first_play ? new Date(data.first_play).toLocaleString() : '—';
+        modalLast.textContent = data.last_play ? new Date(data.last_play).toLocaleString() : '—';
+        
+        if (data.per_station && data.per_station.length > 0) {
+          modalBreakdown.innerHTML = data.per_station.map(p => 
+            `<div class="breakdown-row"><strong>${p.emisora_nombre || '—'}</strong><span class="muted">(${p.plays})</span></div>`
+          ).join('');
+        } else {
+          modalBreakdown.innerHTML = '<div class="muted">Sin reproducciones por emisora.</div>';
+        }
+        
+        if (data.recent_plays && data.recent_plays.length > 0) {
+          modalPlaysTableBody.innerHTML = data.recent_plays.map(r => 
+            `<tr><td>${new Date(r.fecha).toLocaleString()}</td><td>${r.emisora_nombre || '—'}</td></tr>`
+          ).join('');
+        } else {
+          modalPlaysTableBody.innerHTML = '<tr><td colspan="2" class="muted">Sin reproducciones recientes</td></tr>';
+        }
+      } catch (err) {
+        console.error('Error abriendo modal:', err);
+        modalTitle.textContent = 'Error de conexión';
+      }
+    }
+
+    function closeModal() {
+      modal.setAttribute('aria-hidden', 'true');
+      modal.classList.remove('open');
+    }
+
+    document.addEventListener('click', (ev) => {
+      const btn = ev.target.closest('.btn-detail');
+      if (btn) {
+        const masterKey = btn.dataset.masterKey || btn.dataset.masterId;
+        if (masterKey) openSongModal(masterKey);
+        return;
+      }
+      
+      const item = ev.target.closest('.list-item');
+      if (item && (ev.target.classList.contains('list-main') || ev.target.closest('.list-main'))) {
+        const masterKey = item.dataset.masterKey || item.dataset.masterId;
+        if (masterKey) openSongModal(masterKey);
+      }
+    });
+
+    // ============================================================================
+    // FILTROS DE BÚSQUEDA EN TABLAS
+    // ============================================================================
+    document.getElementById('filter-station').addEventListener('input', (e) => {
+      const q = e.target.value.toLowerCase();
+      document.querySelectorAll('#emisoras-table tbody tr').forEach(tr => {
+        tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
+      });
+    });
+
+    document.getElementById('filter-play').addEventListener('input', (e) => {
+      const q = e.target.value.toLowerCase();
+      document.querySelectorAll('#latest-table tbody tr').forEach(tr => {
+        tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
+      });
+    });
+
+    // ============================================================================
+    // EXPORTACIÓN CSV
+    // ============================================================================
+    document.getElementById('export-top-csv').addEventListener('click', async () => {
+      try {
+        const limit = currentLimit;
+        let res;
+        
+        if (currentCountry) {
+          res = await fetch(api.topByCountry(currentCountry, limit, currentPeriod));
+        } else if (currentPeriod === 'weekly') {
+          res = await fetch(api.topWeekly(limit));
+        } else if (currentPeriod === 'monthly') {
+          res = await fetch(api.topMonthly(limit));
+        } else {
+          res = await fetch(api.topSongs(limit));
+        }
+        
+        if (!res.ok) throw new Error('Error descargando CSV');
+        const data = await res.json();
+        const rows = data.map(r => ({
+          titulo: r.titulo || '—',
+          artista: r.artista || '—',
+          total_plays: r.total_plays || 0,
+          total_emisoras: r.total_emisoras || 0,
+          first_play: r.first_play || '—',
+          last_play: r.last_play || '—'
+        }));
+        const csv = rowsToCSV(rows, ['titulo', 'artista', 'total_plays', 'total_emisoras', 'first_play', 'last_play']);
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `top_songs_${new Date().toISOString().split('T')[0]}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showNotification('CSV descargado correctamente');
+      } catch (err) {
+        console.error('Error descargando CSV:', err);
+        showNotification('Error descargando CSV', 'error');
+      }
+    });
+
+    document.getElementById('export-plays-csv').addEventListener('click', () => {
+      try {
+        const rows = Array.from(document.querySelectorAll('#latest-table tbody tr'))
+          .filter(r => r.style.display !== 'none')
+          .map(r => {
+            const c = r.querySelectorAll('td');
+            return {
+              hora: c[0] ? c[0].textContent.trim() : '—',
+              emisora: c[1] ? c[1].textContent.trim() : '—',
+              artista: c[2] ? c[2].textContent.trim() : '—',
+              titulo: c[3] ? c[3].textContent.trim() : '—'
+            };
+          });
+        const csv = rowsToCSV(rows, ['hora', 'emisora', 'artista', 'titulo']);
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `ultimas_reproducciones_${new Date().toISOString().split('T')[0]}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showNotification('CSV descargado correctamente');
+      } catch (err) {
+        console.error('Error descargando CSV:', err);
+        showNotification('Error descargando CSV', 'error');
+      }
+    });
+
+    // ============================================================================
+    // MODAL DE ADMINISTRACIÓN DE EMISORAS
+    // ============================================================================
+    const emisorasModal = document.getElementById('emisoras-modal');
+    const emisorasTableBody = document.querySelector('#emisoras-admin-table tbody');
+
+    document.getElementById('manage-stations').addEventListener('click', async () => {
+      emisorasModal.classList.add('open');
+      emisorasModal.setAttribute('aria-hidden', 'false');
+      await cargarEmisoras();
+    });
+
+    document.getElementById('emisoras-close').addEventListener('click', () => {
+      emisorasModal.classList.remove('open');
+      emisorasModal.setAttribute('aria-hidden', 'true');
+    });
+
+    async function cargarEmisoras() {
+      try {
+        emisorasTableBody.innerHTML = '<tr><td colspan="4">Cargando...</td></tr>';
+        const res = await fetch('/api/emisoras');
+        if (!res.ok) throw new Error('Error cargando emisoras');
+        const emisoras = await res.json();
+        emisorasTableBody.innerHTML = emisoras.map(e => `
+          <tr data-id="${e.id}">
+            <td contenteditable="true" class="edit-nombre">${e.nombre || ''}</td>
+            <td contenteditable="true" class="edit-url">${e.url_stream || ''}</td>
+            <td contenteditable="true" class="edit-pais">${e.pais || ''}</td>
+            <td>
+              <button class="btn-small btn-save" title="Guardar">💾</button>
+              <button class="btn-small btn-delete" title="Eliminar">🗑️</button>
+            </td>
+          </tr>`).join('');
+      } catch (err) {
+        console.error('Error cargando emisoras:', err);
+        emisorasTableBody.innerHTML = '<tr><td colspan="4" class="muted">Error cargando emisoras</td></tr>';
+      }
+    }
+
+    document.addEventListener('click', async (e) => {
+      if (e.target.classList.contains('btn-save')) {
+        try {
+          const tr = e.target.closest('tr');
+          const id = tr.dataset.id;
+          const nombre = tr.querySelector('.edit-nombre').textContent.trim();
+          const url_stream = tr.querySelector('.edit-url').textContent.trim();
+          const pais = tr.querySelector('.edit-pais').textContent.trim();
+
+          if (!nombre || !url_stream) {
+            showNotification('Nombre y URL son obligatorios', 'error');
+            return;
+          }
+
+          const res = await fetch(`/api/emisoras/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nombre, url_stream, pais })
+          });
+
+          if (!res.ok) throw new Error('Error actualizando');
+          showNotification('Emisora actualizada correctamente');
+          await refrescarTablaEmisoras();
+          await loadCountries(); // Recargar países si cambió
+        } catch (err) {
+          console.error('Error guardando:', err);
+          showNotification('Error actualizando emisora', 'error');
+        }
+      }
+
+      if (e.target.classList.contains('btn-delete')) {
+        try {
+          const tr = e.target.closest('tr');
+          const id = tr.dataset.id;
+          if (!confirm('¿Eliminar esta emisora?')) return;
+
+          const res = await fetch(`/api/emisoras/${id}`, { method: 'DELETE' });
+          if (!res.ok) throw new Error('Error eliminando');
+          tr.remove();
+          showNotification('Emisora eliminada correctamente');
+          await refrescarTablaEmisoras();
+          await loadCountries(); // Recargar países
+        } catch (err) {
+          console.error('Error eliminando:', err);
+          showNotification('Error eliminando emisora', 'error');
+        }
+      }
+    });
+
+    document.getElementById('add-station').addEventListener('click', async () => {
+      try {
+        const nombre = document.getElementById('new-name').value.trim();
+        const url_stream = document.getElementById('new-url').value.trim();
+        const pais = document.getElementById('new-country').value.trim();
+
+        if (!nombre || !url_stream) {
+          showNotification('Nombre y URL son obligatorios', 'error');
+          return;
+        }
+
+        const res = await fetch('/api/emisoras', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nombre, url_stream, pais })
+        });
+
+        if (!res.ok) throw new Error('Error agregando');
+
+        document.getElementById('new-name').value = '';
+        document.getElementById('new-url').value = '';
+        document.getElementById('new-country').value = '';
+        showNotification('Emisora agregada correctamente');
+        await cargarEmisoras();
+        await refrescarTablaEmisoras();
+        await loadCountries(); // Recargar países
+      } catch (err) {
+        console.error('Error agregando:', err);
+        showNotification('Error agregando emisora', 'error');
+      }
+    });
+
+    async function refrescarTablaEmisoras() {
+      try {
+        const res = await fetch('/api/emisoras');
+        if (!res.ok) return;
+        const emisoras = await res.json();
+        const tbody = document.querySelector('#emisoras-table tbody');
+        tbody.innerHTML = emisoras.map(e => `
+          <tr data-pais="${e.pais || ''}">
+            <td class="station-name">
+              <img class="station-logo" src="/image/station/${e.id}" alt="Logo" loading="lazy" 
+                   onerror="this.onerror=null; this.src='${getDefaultStationImage()}';">
+              ${e.nombre || '—'}
+            </td>
+            <td>${e.ultima_cancion || 'Sin datos'}</td>
+            <td>${e.ultima_actualizacion ? new Date(e.ultima_actualizacion).toLocaleString() : '---'}</td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        console.error('Error refrescando emisoras:', err);
+      }
+    }
+
+    // ============================================================================
+    // BOTÓN DE REFRESH GLOBAL
+    // ============================================================================
+    document.getElementById('refresh-btn').addEventListener('click', () => {
+      location.reload();
+    });
+
+    // ============================================================================
+    // ATAJOS DE TECLADO
+    // ============================================================================
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        closeModal();
+        if (emisorasModal.classList.contains('open')) {
+          emisorasModal.classList.remove('open');
+          emisorasModal.setAttribute('aria-hidden', 'true');
+        }
+      }
+    });
+
+    // ============================================================================
+    // INICIALIZACIÓN AL CARGAR LA PÁGINA
+    // ============================================================================
+    document.addEventListener('DOMContentLoaded', async () => {
+      // Cargar países disponibles
+      await loadCountries();
+      
+      // Cargar gráfica de actividad
+      const hours = parseInt(document.getElementById('timeseries-hours').value || 24);
+      await loadTimeseries(hours);
+      
+      // Cargar filtros persistidos en localStorage
+      try {
+        const savedCountry = localStorage.getItem('radio_filter_country');
+        const savedPeriod = localStorage.getItem('radio_filter_period');
+        
+        if (savedCountry) {
+          document.getElementById('country-filter').value = savedCountry;
+          currentCountry = savedCountry;
+        }
+        if (savedPeriod) {
+          document.getElementById('period-filter').value = savedPeriod;
+          currentPeriod = savedPeriod;
+        }
+      } catch (err) {
+        console.debug('No hay filtros guardados');
+      }
+    });
+
+    // Guardar filtros en localStorage al cambiar
+    document.getElementById('country-filter').addEventListener('change', (e) => {
+      try {
+        localStorage.setItem('radio_filter_country', e.target.value);
+      } catch (err) {
+        console.debug('No se pudo guardar filtro de país');
+      }
+    });
+
+    document.getElementById('period-filter').addEventListener('change', (e) => {
+      try {
+        localStorage.setItem('radio_filter_period', e.target.value);
+      } catch (err) {
+        console.debug('No se pudo guardar filtro de período');
+      }
+    });
+
+    // ============================================================================
+    // ESTILOS ADICIONALES INLINE (badges de ranking y elementos visuales)
+    // ============================================================================
+    const style = document.createElement('style');
+    style.textContent = `
+      .rank-badge {
+        display: inline-block;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        margin-left: 8px;
+      }
+      .rank-badge.new {
+        background: #00e8a2;
+        color: #000;
+      }
+      .rank-badge.up {
+        background: #4caf50;
+        color: #fff;
+      }
+      .rank-badge.down {
+        background: #ff4444;
+        color: #fff;
+      }
+      .station-logo {
+        width: 24px;
+        height: 24px;
+        border-radius: 4px;
+        margin-right: 8px;
+        vertical-align: middle;
+        object-fit: cover;
+      }
+      .artist-thumb {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        margin-right: 8px;
+        vertical-align: middle;
+        object-fit: cover;
+      }
+      .thumb {
+        width: 48px;
+        height: 48px;
+        border-radius: 8px;
+        margin-right: 12px;
+        object-fit: cover;
+      }
+      .breakdown-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px 0;
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+      }
+      .breakdown-row:last-child {
+        border-bottom: none;
+      }
+      .form-inline {
+        display: flex;
+        gap: 8px;
+        margin-top: 1rem;
+      }
+      .form-inline input {
+        flex: 1;
+      }
+      .btn-small {
+        padding: 4px 8px;
+        font-size: 0.875rem;
+        border: none;
+        background: transparent;
+        cursor: pointer;
+        transition: transform 0.2s;
+      }
+      .btn-small:hover {
+        transform: scale(1.2);
+      }
+      .modal.open {
+        display: flex;
+      }
+      .modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.85);
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+      }
+      .modal-panel {
+        background: #1a1a1a;
+        border-radius: 12px;
+        padding: 2rem;
+        max-width: 800px;
+        width: 90%;
+        max-height: 90vh;
+        overflow-y: auto;
+        position: relative;
+      }
+      .modal-panel.large {
+        max-width: 1200px;
+      }
+      .modal-close {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        background: transparent;
+        border: none;
+        font-size: 1.5rem;
+        color: #fff;
+        cursor: pointer;
+        padding: 0.5rem;
+        line-height: 1;
+        transition: transform 0.2s;
+      }
+      .modal-close:hover {
+        transform: rotate(90deg);
+      }
+      .modal-meta {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        margin: 1rem 0;
+        padding: 1rem;
+        background: rgba(255,255,255,0.05);
+        border-radius: 8px;
+      }
+      .list-item {
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+      .list-item:hover {
+        background: rgba(255,255,255,0.05);
+      }
+      .empty {
+        padding: 2rem;
+        text-align: center;
+        color: #888;
+      }
+    `;
+    document.head.appendChild(style);
+
+  </script>
+</body>
+</html>

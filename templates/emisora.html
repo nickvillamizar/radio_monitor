@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Emisora — {{ emisora.nombre }}</title>
+
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    .small-muted { color: #666; font-size: 0.9rem; }
+    .badge { display:inline-block;padding:4px 8px;border-radius:12px;font-size:0.8rem;background:#f0f0f0;margin-left:8px; }
+    .pos-up { color: #0a8a3a; font-weight:700; }
+    .pos-down { color: #c0392b; font-weight:700; }
+    .pos-new { color: #0077cc; font-weight:700; }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="container header-grid">
+      <div>
+        <h1>Emisora: {{ emisora.nombre }}</h1>
+        <p class="subtitle">Estadísticas — Página de emisora</p>
+      </div>
+      <div class="header-actions">
+        <a href="/" class="btn-outline">Volver al panel</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="container" style="padding:20px 0;">
+    <section class="card">
+      <h3>Reproducción actual</h3>
+      {% if current %}
+        <div><strong>Título:</strong> {{ current.titulo or '—' }}</div>
+        <div><strong>Artista:</strong> {{ current.artista or '—' }}</div>
+        <div class="small-muted"><strong>Fecha:</strong> {{ current.fecha_reproduccion.strftime('%Y-%m-%d %H:%M:%S') if current.fecha_reproduccion else '—' }}</div>
+      {% else %}
+        <div class="muted">No hay reproducción reciente registrada para esta emisora.</div>
+      {% endif %}
+    </section>
+
+    <section class="card" style="margin-top:12px;">
+      <h3>Top semanal <span class="small-muted">(últimos 7 días)</span></h3>
+      <div class="table-wrapper small-scroll" style="max-height:380px;">
+        <table class="table-compact">
+          <thead>
+            <tr><th>#</th><th>Título</th><th>Artista</th><th>Plays</th><th>Comparación</th></tr>
+          </thead>
+          <tbody>
+            {% if top_weekly %}
+              {% for s in top_weekly %}
+                <tr>
+                  <td>{{ s.rank }}</td>
+                  <td>{{ s.titulo or '—' }}</td>
+                  <td>{{ s.artista or '—' }}</td>
+                  <td>{{ s.total_plays or 0 }}</td>
+                  <td>
+                    {% if s.is_new %}
+                      <span class="pos-new">NUEVA</span>
+                    {% else %}
+                      {% if s.diff > 0 %}
+                        <span class="pos-up">▲ +{{ s.diff }}</span>
+                      {% elif s.diff < 0 %}
+                        <span class="pos-down">▼ {{ s.diff }}</span>
+                      {% else %}
+                        <span class="small-muted">—</span>
+                      {% endif %}
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            {% else %}
+              <tr><td colspan="5" class="muted">Sin datos semanales</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top:12px;">
+      <h3>Top mensual <span class="small-muted">(últimos 30 días)</span></h3>
+      <div class="table-wrapper small-scroll" style="max-height:380px;">
+        <table class="table-compact">
+          <thead>
+            <tr><th>#</th><th>Título</th><th>Artista</th><th>Plays</th></tr>
+          </thead>
+          <tbody>
+            {% if top_monthly %}
+              {% for s in top_monthly %}
+                <tr>
+                  <td>{{ loop.index }}</td>
+                  <td>{{ s.titulo or '—' }}</td>
+                  <td>{{ s.artista or '—' }}</td>
+                  <td>{{ s.total_plays or 0 }}</td>
+                </tr>
+              {% endfor %}
+            {% else %}
+              <tr><td colspan="4" class="muted">Sin datos mensuales</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top:12px;">
+      <h3>Top artistas en la emisora</h3>
+      <div class="table-wrapper small-scroll" style="max-height:260px;">
+        <table class="table-compact">
+          <thead><tr><th>#</th><th>Artista</th><th>Plays</th></tr></thead>
+          <tbody>
+            {% if top_artists %}
+              {% for a in top_artists %}
+                <tr>
+                  <td>{{ loop.index }}</td>
+                  <td>{{ a.artista or '—' }}</td>
+                  <td>{{ a.plays }}</td>
+                </tr>
+              {% endfor %}
+            {% else %}
+              <tr><td colspan="3" class="muted">Sin datos de artistas</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <small>Emisora: {{ emisora.nombre }} — Última actualización: {{ emisora.ultima_actualizacion.strftime('%Y-%m-%d %H:%M:%S') if emisora.ultima_actualizacion else '---' }}</small>
+    </div>
+  </footer>
+</body>
+</html>
