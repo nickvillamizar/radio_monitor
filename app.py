@@ -1,24 +1,23 @@
-# archivo: app.py este es el archivo que no imprime errores pero que no tiene la parte de filtrar por paises
+# archivo: app.py - Versión con filtrado por países MEJORADO y normalizado
 import time
 import threading
 from datetime import datetime, timedelta
 from urllib.parse import quote_plus, unquote_plus
 import os
 import mimetypes
-from urllib.parse import unquote_plus as url_unquote_plus
+import re
 
-from flask import Flask, render_template, jsonify, request, current_app, abort, send_file
-
-from sqlalchemy import func, desc, and_
+from flask import Flask, render_template, jsonify, request, abort, send_file
+from sqlalchemy import func, desc, or_
 
 from config import Config
 from utils import stream_reader
 from utils.db import db
-from models.emisoras import Emisora, Cancion  # Emisora and Cancion must exist
+from models.emisoras import Emisora, Cancion
 
-# Try importing optional summary models (if you created them)
+# Importar modelos opcionales
 try:
-    from models.emisoras import CancionMaster, CancionPorEmisora  # optional
+    from models.emisoras import CancionMaster, CancionPorEmisora
     HAS_MASTER = True
 except Exception:
     CancionMaster = None
@@ -29,94 +28,239 @@ app = Flask(__name__, static_folder="static", template_folder="templates")
 app.config.from_object(Config)
 db.init_app(app)
 
-# Importar y registrar las rutas de administración de emisoras
-# (si el import falla la app debe fallar pronto para que lo corrijas)
+# Registrar rutas de API
 from routes.emisoras_api import emisoras_api
 app.register_blueprint(emisoras_api)
 
-
-# ---------------------------
-# Optional image_fetcher import (no rompe si no existe)
-# ---------------------------
+# Sistema de imágenes (opcional)
 try:
     from utils.image_fetcher import (
         get_song_image_path,
         get_artist_image_path,
         get_station_image_path,
     )
-
     _IMAGE_FETCHER_AVAILABLE = True
 except Exception:
-    # Si no existe el módulo, definimos stubs que devuelven None para no romper nada.
     _IMAGE_FETCHER_AVAILABLE = False
-
+    
     def get_song_image_path(*args, **kwargs):
         return None
-
+    
     def get_artist_image_path(*args, **kwargs):
         return None
-
+    
     def get_station_image_path(*args, **kwargs):
         return None
 
 
-def _guess_mimetype(path):
-    """Guess mimetype from filename; fallback to image/png."""
-    m, _ = mimetypes.guess_type(path)
-    if not m:
-        return "image/png"
-    return m
+# ============================================================================
+# NORMALIZACIÓN DE PAÍSES - Funciones helper
+# ============================================================================
+
+def normalize_country_name(country_str):
+    """
+    Normaliza nombres de países eliminando ciudades, códigos y caracteres extraños.
+    Retorna el nombre limpio del país o None si no es válido.
+    """
+    if not country_str or not isinstance(country_str, str):
+        return None
+    
+    # Convertir a string y limpiar espacios
+    country = str(country_str).strip()
+    
+    # Si está vacío después de limpiar
+    if not country or country.lower() in ['', 'null', 'none', 'n/a', 'unknown']:
+        return None
+    
+    # Remover códigos de área/ciudad entre paréntesis o después de guiones
+    country = re.sub(r'\s*[-–—]\s*.*$', '', country)  # Todo después de guión
+    country = re.sub(r'\s*\(.*?\)\s*', '', country)   # Paréntesis
+    country = re.sub(r'\s*\[.*?\]\s*', '', country)   # Corchetes
+    
+    # Separar por comas y tomar solo la primera parte (país principal)
+    if ',' in country:
+        country = country.split(',')[0].strip()
+    
+    # Diccionario de normalizaciones comunes
+    normalizations = {
+        'republica dominicana': 'República Dominicana',
+        'república dominicana': 'República Dominicana',
+        'rep dom': 'República Dominicana',
+        'rep. dom': 'República Dominicana',
+        'rep.dom': 'República Dominicana',
+        'rd': 'República Dominicana',
+        'dominican republic': 'República Dominicana',
+        
+        'colombia': 'Colombia',
+        'co': 'Colombia',
+        
+        'venezuela': 'Venezuela',
+        've': 'Venezuela',
+        
+        'méxico': 'México',
+        'mexico': 'México',
+        'mx': 'México',
+        
+        'argentina': 'Argentina',
+        'ar': 'Argentina',
+        
+        'chile': 'Chile',
+        'cl': 'Chile',
+        
+        'perú': 'Perú',
+        'peru': 'Perú',
+        'pe': 'Perú',
+        
+        'bolivia': 'Bolivia',
+        'bo': 'Bolivia',
+        
+        'ecuador': 'Ecuador',
+        'ec': 'Ecuador',
+        
+        'españa': 'España',
+        'spain': 'España',
+        'es': 'España',
+        
+        'estados unidos': 'Estados Unidos',
+        'usa': 'Estados Unidos',
+        'us': 'Estados Unidos',
+        'united states': 'Estados Unidos',
+    }
+    
+    # Buscar normalización (case-insensitive)
+    country_lower = country.lower()
+    for key, normalized in normalizations.items():
+        if country_lower.startswith(key):
+            return normalized
+    
+    # Si no se encontró normalización, capitalizar correctamente
+    # Remover caracteres especiales al inicio/final
+    country = re.sub(r'^[^a-zA-ZáéíóúÁÉÍÓÚñÑ]+', '', country)
+    country = re.sub(r'[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$', '', country)
+    
+    # Capitalizar primera letra de cada palabra
+    if country:
+        return ' '.join(word.capitalize() for word in country.split())
+    
+    return None
 
 
-def _send_image_or_404(path):
-    """Send image file if exists, otherwise raise 404."""
-    if not path or not os.path.exists(path):
-        abort(404)
-    return send_file(path, mimetype=_guess_mimetype(path))
+def get_valid_countries():
+    """
+    Obtiene lista de países válidos con sus estadísticas REALES.
+    Solo incluye países con nombres normalizados y cuenta correcta.
+    """
+    try:
+        # Obtener todos los países únicos de emisoras
+        raw_countries = db.session.query(Emisora.pais).distinct().all()
+        
+        country_stats = {}
+        
+        for (raw_country,) in raw_countries:
+            normalized = normalize_country_name(raw_country)
+            
+            # Saltar países inválidos
+            if not normalized:
+                continue
+            
+            # Contar emisoras y canciones para este país NORMALIZADO
+            # Buscar todas las variantes que normalizan a este país
+            emisoras_ids = []
+            for (variant,) in raw_countries:
+                if normalize_country_name(variant) == normalized:
+                    # Obtener IDs de emisoras para esta variante
+                    ids = db.session.query(Emisora.id).filter(
+                        Emisora.pais == variant
+                    ).all()
+                    emisoras_ids.extend([id[0] for id in ids])
+            
+            # Remover duplicados
+            emisoras_ids = list(set(emisoras_ids))
+            
+            # Contar canciones para estas emisoras
+            total_canciones = db.session.query(func.count(Cancion.id)).filter(
+                Cancion.emisora_id.in_(emisoras_ids)
+            ).scalar() or 0
+            
+            # Solo incluir si tiene datos reales
+            if emisoras_ids and total_canciones > 0:
+                if normalized not in country_stats:
+                    country_stats[normalized] = {
+                        'pais': normalized,
+                        'emisoras': 0,
+                        'canciones': 0
+                    }
+                
+                country_stats[normalized]['emisoras'] = len(emisoras_ids)
+                country_stats[normalized]['canciones'] = total_canciones
+        
+        # Convertir a lista y ordenar por número de canciones
+        result = list(country_stats.values())
+        result.sort(key=lambda x: x['canciones'], reverse=True)
+        
+        return result
+        
+    except Exception as e:
+        app.logger.error(f"Error obteniendo países válidos: {e}")
+        return []
 
 
-# ---------------------------
-# Monitor thread
-# ---------------------------
+# ============================================================================
+# MONITOR THREAD - Sistema de actualización automática
+# ============================================================================
+
 def monitor_loop():
+    """Loop principal del monitor de emisoras."""
     with app.app_context():
         db.create_all()
-        app.logger.info("🛰️  Monitor iniciado correctamente")
+        app.logger.info("🛰️  Monitor de emisoras iniciado correctamente")
+        
         while True:
             try:
                 stream_reader.actualizar_emisoras(
-                    fallback_to_audd=bool(app.config.get("AUDD_API_TOKEN", ""))
+                    fallback_to_audd=bool(app.config.get("AUDD_API_TOKEN", "")),
+                    dedupe_seconds=int(app.config.get("DEDUPE_SECONDS", 300))
                 )
             except Exception as exc:
-                app.logger.error(f"Error en ciclo de actualización: {exc}")
-            time.sleep(int(app.config.get("MONITOR_INTERVAL", 60)))
+                app.logger.error(f"❌ Error en ciclo de actualización: {exc}")
+                try:
+                    db.session.rollback()
+                except Exception as rollback_exc:
+                    app.logger.error(f"Error en rollback: {rollback_exc}")
+            
+            interval = int(app.config.get("MONITOR_INTERVAL", 60))
+            time.sleep(interval)
 
 
 def start_monitor_thread():
+    """Inicia el hilo del monitor si no está corriendo."""
     for t in threading.enumerate():
         if t.name == "radio_monitor_thread":
-            app.logger.info("🔁 Hilo del monitor ya en ejecución.")
+            app.logger.info("🔁 Monitor ya en ejecución")
             return
+    
     t = threading.Thread(
-        target=monitor_loop, name="radio_monitor_thread", daemon=True
+        target=monitor_loop,
+        name="radio_monitor_thread",
+        daemon=True
     )
     t.start()
-    app.logger.info("🚀 Hilo del monitor lanzado.")
+    app.logger.info("🚀 Monitor iniciado exitosamente")
 
 
-# ---------------------------
-# Helper utilities
-# ---------------------------
+# ============================================================================
+# UTILIDADES - Funciones helper
+# ============================================================================
+
 def make_master_key(artist, title):
-    """Create a stable url-safe key for a song (used when no CancionMaster exists)."""
+    """Genera clave única para una canción."""
     artist = artist or ""
     title = title or ""
     return quote_plus(f"{artist}|||{title}")
 
 
 def parse_master_key(key):
-    """Return (artist, title) from an encoded key. If key is integer and CancionMaster exists,
-       caller should handle that case separately."""
+    """Extrae artista y título de una clave."""
     try:
         s = unquote_plus(key)
         if "|||" in s:
@@ -128,64 +272,58 @@ def parse_master_key(key):
 
 
 def count_distinct_emisoras(titulo, artista):
-    """Contar emisoras distintas que reproducen una canción."""
+    """Cuenta emisoras distintas que tocan una canción."""
     return (
         db.session.query(func.count(Cancion.emisora_id.distinct()))
         .filter(Cancion.titulo == titulo, Cancion.artista == artista)
-        .scalar()
-        or 0
+        .scalar() or 0
     )
 
 
-def count_distinct_emisoras_master(master_id):
-    """Contar emisoras distintas para una canción en tabla master."""
-    if CancionPorEmisora is not None:
-        return (
-            db.session.query(func.count(CancionPorEmisora.emisora_id.distinct()))
-            .filter(CancionPorEmisora.master_id == master_id)
-            .scalar()
-            or 0
-        )
-    return 0
-
-
-def _assemble_top_from_rows(rows, use_master=False):
-    """Convierte filas SQLAlchemy a lista de dicts consistentes para JSON."""
+def _assemble_top_from_rows(rows, use_master=False, include_dates=True):
+    """
+    Convierte filas SQL a formato JSON consistente.
+    """
     out = []
+    
     if use_master:
         for r in rows:
-            out.append(
-                {
-                    "id": r.id,
-                    "titulo": r.titulo,
-                    "artista": r.artista,
-                    "total_plays": int(getattr(r, "plays", r.total_plays or 0)),
-                    "first_play": getattr(r, "first_play", None).isoformat() if getattr(r, "first_play", None) else None,
-                    "last_play": getattr(r, "last_play", None).isoformat() if getattr(r, "last_play", None) else None,
-                    "master_key": str(r.id),
-                }
-            )
+            item = {
+                "id": r.id,
+                "titulo": r.titulo,
+                "artista": r.artista,
+                "total_plays": int(getattr(r, "plays", r.total_plays or 0)),
+                "master_key": str(r.id),
+            }
+            if include_dates:
+                item["first_play"] = (r.first_play.isoformat() 
+                                     if hasattr(r, 'first_play') and r.first_play 
+                                     else None)
+                item["last_play"] = (r.last_play.isoformat() 
+                                    if hasattr(r, 'last_play') and r.last_play 
+                                    else None)
+            out.append(item)
     else:
         for r in rows:
-            master_key = make_master_key(r.artista or "", r.titulo or "")
-            out.append(
-                {
-                    "id": None,
-                    "titulo": r.titulo,
-                    "artista": r.artista,
-                    "total_plays": int(r.plays),
-                    "first_play": r.first_play.isoformat() if r.first_play else None,
-                    "last_play": r.last_play.isoformat() if r.last_play else None,
-                    "master_key": master_key,
-                }
-            )
+            item = {
+                "id": None,
+                "titulo": r.titulo,
+                "artista": r.artista,
+                "total_plays": int(r.plays),
+                "master_key": make_master_key(r.artista or "", r.titulo or ""),
+            }
+            if include_dates and hasattr(r, 'first_play'):
+                item["first_play"] = r.first_play.isoformat() if r.first_play else None
+                item["last_play"] = r.last_play.isoformat() if r.last_play else None
+            out.append(item)
+    
     return out
 
 
 def get_top_from_cancion(limit=20, since=None, emisora_id=None, country=None):
     """
-    Obtiene top usando la tabla 'canciones' (ventana opcional 'since' como datetime).
-    Puede filtrar por emisora_id o por país (join a emisora).
+    Obtiene top de canciones con filtros opcionales.
+    MEJORADO: Normaliza nombres de países antes de filtrar.
     """
     q = db.session.query(
         Cancion.titulo.label("titulo"),
@@ -194,223 +332,247 @@ def get_top_from_cancion(limit=20, since=None, emisora_id=None, country=None):
         func.min(Cancion.fecha_reproduccion).label("first_play"),
         func.max(Cancion.fecha_reproduccion).label("last_play"),
     )
+    
     if emisora_id:
         q = q.filter(Cancion.emisora_id == emisora_id)
+    
     if since:
         q = q.filter(Cancion.fecha_reproduccion >= since)
+    
     if country:
-        # join Emisora
-        q = q.join(Emisora, Emisora.id == Cancion.emisora_id).filter(func.lower(Emisora.pais) == country.lower())
-
-    q = q.group_by(Cancion.titulo, Cancion.artista).order_by(desc("plays")).limit(limit)
-    rows = q.all()
-    return _assemble_top_from_rows(rows, use_master=False)
-
-
-def get_top_weekly(limit=20):
-    since = datetime.now() - timedelta(days=7)
-    return get_top_from_cancion(limit=limit, since=since)
-
-
-def get_top_monthly(limit=20):
-    since = datetime.now() - timedelta(days=30)
-    return get_top_from_cancion(limit=limit, since=since)
+        # MEJORADO: Buscar todas las variantes que normalizan a este país
+        normalized_country = normalize_country_name(country)
+        if normalized_country:
+            # Obtener todas las variantes de países que normalizan al mismo valor
+            all_variants = db.session.query(Emisora.pais).distinct().all()
+            matching_variants = [
+                v[0] for v in all_variants 
+                if normalize_country_name(v[0]) == normalized_country
+            ]
+            
+            if matching_variants:
+                q = q.join(Emisora, Emisora.id == Cancion.emisora_id)
+                q = q.filter(Emisora.pais.in_(matching_variants))
+            else:
+                # Si no hay variantes, buscar exacto (fallback)
+                q = q.join(Emisora, Emisora.id == Cancion.emisora_id)
+                q = q.filter(func.lower(Emisora.pais) == country.lower())
+    
+    # Filtrar basura
+    q = q.filter(
+        Cancion.artista != "Desconocido",
+        func.length(Cancion.titulo) >= 3
+    )
+    
+    q = q.group_by(Cancion.titulo, Cancion.artista)
+    q = q.order_by(desc("plays"))
+    q = q.limit(limit)
+    
+    return _assemble_top_from_rows(q.all(), use_master=False, include_dates=True)
 
 
 def compute_rank_diff(current_list, previous_list):
     """
-    current_list and previous_list: list of dicts with keys 'titulo' and 'artista'
-    returns same list of current_list with added keys:
-      - rank (1-based)
-      - prev_rank (1-based or None)
-      - diff = prev_rank - rank (positive => subió)
-      - is_new (True if no prev_rank)
+    Calcula diferencias de ranking entre dos listas.
     """
     prev_map = {}
     for idx, s in enumerate(previous_list, start=1):
-        key = (s.get("titulo") or "").strip().lower(), (s.get("artista") or "").strip().lower()
+        key = (
+            (s.get("titulo") or "").strip().lower(),
+            (s.get("artista") or "").strip().lower()
+        )
         prev_map[key] = idx
-
+    
     out = []
     for idx, s in enumerate(current_list, start=1):
-        key = (s.get("titulo") or "").strip().lower(), (s.get("artista") or "").strip().lower()
+        key = (
+            (s.get("titulo") or "").strip().lower(),
+            (s.get("artista") or "").strip().lower()
+        )
         prev_rank = prev_map.get(key)
-        diff = None
-        is_new = False
-        if prev_rank is None:
-            is_new = True
-        else:
-            diff = prev_rank - idx
+        
         item = dict(s)
         item["rank"] = idx
         item["prev_rank"] = prev_rank
-        item["diff"] = diff
-        item["is_new"] = is_new
+        item["diff"] = (prev_rank - idx) if prev_rank else None
+        item["is_new"] = prev_rank is None
+        
         out.append(item)
+    
     return out
 
 
-# ---------------------------
-# RUTAS ADICIONALES: imágenes (song, artist, station)
-# ---------------------------
+# ============================================================================
+# RUTAS DE IMÁGENES - Sistema de fallback sin 404
+# ============================================================================
+
+def _send_image_or_fallback(path, fallback_name):
+    """Envía imagen o fallback si no existe."""
+    if path and os.path.exists(path):
+        mime = mimetypes.guess_type(path)[0] or "image/png"
+        return send_file(path, mimetype=mime)
+    
+    for ext in ['png', 'jpg', 'jpeg']:
+        fallback = os.path.join(app.static_folder, "img", f"{fallback_name}.{ext}")
+        if os.path.exists(fallback):
+            mime = f"image/{ext}" if ext != 'jpg' else "image/jpeg"
+            return send_file(fallback, mimetype=mime)
+    
+    generic = os.path.join(app.static_folder, "img", "default.png")
+    if os.path.exists(generic):
+        return send_file(generic, mimetype="image/png")
+    
+    abort(404)
+
+
 @app.route("/image/song/<path:master_key>")
 def image_song(master_key):
-    """Devuelve imagen (cached) para canción (artist + title)."""
-    # Resolver artista/título (soporta master_id si existe CancionMaster)
+    """Imagen de canción con fallback automático."""
     artist = None
     title = None
+    
     if HAS_MASTER and master_key.isdigit():
         try:
-            master_id = int(master_key)
-            master = CancionMaster.query.get(master_id)
+            master = CancionMaster.query.get(int(master_key))
             if master:
                 artist = master.artista or ""
                 title = master.titulo or ""
-            else:
-                # si no existe el master id, intentar parsear como key (fallback)
-                artist, title = parse_master_key(master_key)
         except Exception:
-            artist, title = parse_master_key(master_key)
-    else:
+            pass
+    
+    if not title:
         artist, title = parse_master_key(master_key)
-
-    if title is None:
-        abort(404)
-
+    
+    if not title:
+        return _send_image_or_fallback(None, "default_song")
+    
     try:
-        path = get_song_image_path(artist=artist or "", title=title or "", app_config=app.config)
+        path = get_song_image_path(
+            artist=artist or "",
+            title=title or "",
+            app_config=app.config
+        )
     except Exception:
         path = None
-
-    # Prefer cached path, otherwise fallback to static default images if present
-    if path and os.path.exists(path):
-        return _send_image_or_404(path)
-
-    # fallback candidates
-    fallback_png = os.path.join(app.static_folder, "img", "default_song.png")
-    fallback_jpg = os.path.join(app.static_folder, "img", "default_song.jpg")
-    if os.path.exists(fallback_png):
-        return send_file(fallback_png, mimetype="image/png")
-    if os.path.exists(fallback_jpg):
-        return send_file(fallback_jpg, mimetype="image/jpeg")
-    abort(404)
+    
+    return _send_image_or_fallback(path, "default_song")
 
 
 @app.route("/image/artist/<path:artist_name>")
 def image_artist(artist_name):
-    """Devuelve imagen cached para artista (nombre urlencoded)."""
+    """Imagen de artista con fallback automático."""
     try:
-        artist = url_unquote_plus(artist_name)
+        artist = unquote_plus(artist_name)
     except Exception:
         artist = artist_name
+    
     try:
         path = get_artist_image_path(artist=artist or "", app_config=app.config)
     except Exception:
         path = None
-
-    if path and os.path.exists(path):
-        return _send_image_or_404(path)
-
-    fallback_png = os.path.join(app.static_folder, "img", "default_artist.png")
-    fallback_jpg = os.path.join(app.static_folder, "img", "default_artist.jpg")
-    if os.path.exists(fallback_png):
-        return send_file(fallback_png, mimetype="image/png")
-    if os.path.exists(fallback_jpg):
-        return send_file(fallback_jpg, mimetype="image/jpeg")
-    abort(404)
+    
+    return _send_image_or_fallback(path, "default_artist")
 
 
 @app.route("/image/station/<int:emisora_id>")
 def image_station(emisora_id):
-    """Devuelve imagen/logo cached para emisora (por id)."""
+    """Imagen de emisora con fallback automático."""
     emisora = Emisora.query.get_or_404(emisora_id)
-    site = getattr(emisora, "sitio_web", None) or getattr(emisora, "url", None)
-    name = emisora.nombre or ""
+    
     try:
-        path = get_station_image_path(name=name, site=site, emisora_obj=emisora, app_config=app.config)
+        path = get_station_image_path(
+            name=emisora.nombre or "",
+            site=getattr(emisora, "sitio_web", None) or emisora.url_stream,
+            emisora_obj=emisora,
+            app_config=app.config
+        )
     except Exception:
         path = None
-
-    if path and os.path.exists(path):
-        return _send_image_or_404(path)
-
-    fallback_png = os.path.join(app.static_folder, "img", "default_station.png")
-    fallback_jpg = os.path.join(app.static_folder, "img", "default_station.jpg")
-    if os.path.exists(fallback_png):
-        return send_file(fallback_png, mimetype="image/png")
-    if os.path.exists(fallback_jpg):
-        return send_file(fallback_jpg, mimetype="image/jpeg")
-    abort(404)
+    
+    return _send_image_or_fallback(path, "default_station")
 
 
-# ---------------------------
-# Routes / Views
-# ---------------------------
+# ============================================================================
+# RUTA PRINCIPAL - Dashboard
+# ============================================================================
+
 @app.route("/")
 def index():
+    """Página principal del dashboard."""
     emisoras = Emisora.query.order_by(Emisora.nombre).all()
-    ultimas = Cancion.query.order_by(Cancion.fecha_reproduccion.desc()).limit(50).all()
-
-    # Decide si usar CancionMaster sólo si existe y tiene filas
+    
+    ultimas = (
+        Cancion.query
+        .filter(
+            Cancion.artista != "Desconocido",
+            func.length(Cancion.titulo) >= 3
+        )
+        .order_by(Cancion.fecha_reproduccion.desc())
+        .limit(50)
+        .all()
+    )
+    
     use_master = False
-    if HAS_MASTER and CancionMaster is not None:
+    if HAS_MASTER and CancionMaster:
         try:
-            master_count = db.session.query(func.count(CancionMaster.id)).scalar() or 0
-            if master_count > 0:
-                use_master = True
+            count = db.session.query(func.count(CancionMaster.id)).scalar() or 0
+            use_master = count > 0
         except Exception:
-            use_master = False
-
-    # Top global: prefer CancionMaster if available and populated, otherwise compute from Cancion
+            pass
+    
     if use_master:
         top_songs = (
-            CancionMaster.query.order_by(CancionMaster.total_plays.desc()).limit(20).all()
+            CancionMaster.query
+            .order_by(CancionMaster.total_plays.desc())
+            .limit(20)
+            .all()
         )
     else:
-        # compute top songs from Cancion table by grouping (titulo + artista)
         top_q = (
             db.session.query(
-                Cancion.titulo.label("titulo"),
-                Cancion.artista.label("artista"),
+                Cancion.titulo,
+                Cancion.artista,
                 func.count(Cancion.id).label("plays"),
                 func.min(Cancion.fecha_reproduccion).label("first_play"),
                 func.max(Cancion.fecha_reproduccion).label("last_play"),
+            )
+            .filter(
+                Cancion.artista != "Desconocido",
+                func.length(Cancion.titulo) >= 3
             )
             .group_by(Cancion.titulo, Cancion.artista)
             .order_by(desc("plays"))
             .limit(20)
             .all()
         )
-        # Convert to simple objects for template compatibility
-        class _Tmp:
+        
+        class _Song:
             pass
-
+        
         top_songs = []
         for r in top_q:
-            t = _Tmp()
-            t.titulo = r.titulo
-            t.artista = r.artista
-            t.total_plays = int(r.plays)
-            t.first_play = r.first_play
-            t.last_play = r.last_play
-            # create master_key for front to request details
-            t.master_key = make_master_key(r.artista or "", r.titulo or "")
-            t.id = None
-            top_songs.append(t)
-
-    # Top artists: aggregate plays per artist
-    if use_master and CancionMaster is not None:
+            s = _Song()
+            s.titulo = r.titulo
+            s.artista = r.artista
+            s.total_plays = int(r.plays)
+            s.first_play = r.first_play
+            s.last_play = r.last_play
+            s.master_key = make_master_key(r.artista or "", r.titulo or "")
+            s.id = None
+            top_songs.append(s)
+    
+    if use_master and CancionMaster:
         top_artists = (
             db.session.query(
                 CancionMaster.artista,
                 func.sum(CancionMaster.total_plays).label("plays"),
             )
+            .filter(CancionMaster.artista != "Desconocido")
             .group_by(CancionMaster.artista)
             .order_by(desc("plays"))
             .limit(20)
             .all()
         )
-        # convert to (artist, plays) pairs for template compatibility
         top_artists = [(r.artista, int(r.plays or 0)) for r in top_artists]
     else:
         top_artists = (
@@ -418,39 +580,29 @@ def index():
                 Cancion.artista,
                 func.count(Cancion.id).label("plays"),
             )
+            .filter(
+                Cancion.artista != "Desconocido",
+                func.length(Cancion.titulo) >= 3
+            )
             .group_by(Cancion.artista)
             .order_by(desc("plays"))
             .limit(20)
             .all()
         )
         top_artists = [(r.artista, int(r.plays or 0)) for r in top_artists]
-
-    # Plays per station (totales) - try to use CancionPorEmisora if exists for performance
-    if use_master and CancionPorEmisora is not None:
-        plays_per_station = (
-            db.session.query(
-                Emisora.id,
-                Emisora.nombre,
-                func.coalesce(func.sum(CancionPorEmisora.plays), 0).label("plays"),
-            )
-            .outerjoin(CancionPorEmisora, CancionPorEmisora.emisora_id == Emisora.id)
-            .group_by(Emisora.id, Emisora.nombre)
-            .order_by(desc("plays"))
-            .all()
+    
+    plays_per_station = (
+        db.session.query(
+            Emisora.id,
+            Emisora.nombre,
+            func.coalesce(func.count(Cancion.id), 0).label("plays"),
         )
-    else:
-        plays_per_station = (
-            db.session.query(
-                Emisora.id,
-                Emisora.nombre,
-                func.coalesce(func.count(Cancion.id), 0).label("plays"),
-            )
-            .outerjoin(Cancion, Cancion.emisora_id == Emisora.id)
-            .group_by(Emisora.id, Emisora.nombre)
-            .order_by(desc("plays"))
-            .all()
-        )
-
+        .outerjoin(Cancion, Cancion.emisora_id == Emisora.id)
+        .group_by(Emisora.id, Emisora.nombre)
+        .order_by(desc("plays"))
+        .all()
+    )
+    
     return render_template(
         "index.html",
         emisoras=emisoras,
@@ -462,349 +614,267 @@ def index():
     )
 
 
-# ---------------------------
-# API: top global (JSON)
-# ---------------------------
+# ============================================================================
+# API - Estadísticas Globales MEJORADAS
+# ============================================================================
+
 @app.route("/api/stats/top_songs")
 def api_top_songs():
+    """Top canciones global con breakdown por emisora."""
     limit = int(request.args.get("limit", 20))
-
-    use_master = False
-    if HAS_MASTER and CancionMaster is not None:
-        try:
-            master_count = db.session.query(func.count(CancionMaster.id)).scalar() or 0
-            if master_count > 0:
-                use_master = True
-        except Exception:
-            use_master = False
-
+    
+    rows = (
+        db.session.query(
+            Cancion.titulo,
+            Cancion.artista,
+            func.count(Cancion.id).label("plays"),
+            func.min(Cancion.fecha_reproduccion).label("first_play"),
+            func.max(Cancion.fecha_reproduccion).label("last_play"),
+        )
+        .filter(
+            Cancion.artista != "Desconocido",
+            func.length(Cancion.titulo) >= 3
+        )
+        .group_by(Cancion.titulo, Cancion.artista)
+        .order_by(desc("plays"))
+        .limit(limit)
+        .all()
+    )
+    
     out = []
-
-    if use_master:
-        rows = CancionMaster.query.order_by(CancionMaster.total_plays.desc()).limit(limit).all()
-        for r in rows:
-            if CancionPorEmisora is not None:
-                break_down = (
-                    db.session.query(Emisora.id, Emisora.nombre, CancionPorEmisora.plays)
-                    .join(CancionPorEmisora, CancionPorEmisora.emisora_id == Emisora.id)
-                    .filter(CancionPorEmisora.master_id == r.id)
-                    .order_by(desc(CancionPorEmisora.plays))
-                    .limit(10)
-                    .all()
-                )
-                breakdown_list = [
-                    {"emisora_id": b.id, "emisora_nombre": b.nombre, "plays": int(b.plays)}
-                    for b in break_down
-                ]
-                total_emisoras = int(count_distinct_emisoras_master(r.id))
-            else:
-                bd = (
-                    db.session.query(Emisora.id, Emisora.nombre, func.count(Cancion.id).label("plays"))
-                    .join(Cancion, Cancion.emisora_id == Emisora.id)
-                    .filter(Cancion.titulo == r.titulo, Cancion.artista == r.artista)
-                    .group_by(Emisora.id, Emisora.nombre)
-                    .order_by(desc("plays"))
-                    .limit(10)
-                    .all()
-                )
-                breakdown_list = [
-                    {"emisora_id": b.id, "emisora_nombre": b.nombre, "plays": int(b.plays)} for b in bd
-                ]
-                total_emisoras = int(count_distinct_emisoras(r.titulo, r.artista))
-
-            out.append(
-                {
-                    "id": r.id,
-                    "titulo": r.titulo,
-                    "artista": r.artista,
-                    "total_plays": int(r.total_plays or 0),
-                    "total_emisoras": total_emisoras,
-                    "first_play": r.first_play.isoformat() if r.first_play else None,
-                    "last_play": r.last_play.isoformat() if r.last_play else None,
-                    "breakdown": breakdown_list,
-                    "master_key": str(r.id),
-                }
-            )
-    else:
-        rows = (
+    for r in rows:
+        breakdown = (
             db.session.query(
-                Cancion.titulo.label("titulo"),
-                Cancion.artista.label("artista"),
-                func.count(Cancion.id).label("plays"),
-                func.min(Cancion.fecha_reproduccion).label("first_play"),
-                func.max(Cancion.fecha_reproduccion).label("last_play"),
+                Emisora.id,
+                Emisora.nombre,
+                func.count(Cancion.id).label("plays")
             )
-            .group_by(Cancion.titulo, Cancion.artista)
+            .join(Cancion, Cancion.emisora_id == Emisora.id)
+            .filter(
+                Cancion.titulo == r.titulo,
+                Cancion.artista == r.artista
+            )
+            .group_by(Emisora.id, Emisora.nombre)
             .order_by(desc("plays"))
-            .limit(limit)
+            .limit(10)
             .all()
         )
-        for r in rows:
-            bd = (
-                db.session.query(Emisora.id, Emisora.nombre, func.count(Cancion.id).label("plays"))
-                .join(Cancion, Cancion.emisora_id == Emisora.id)
-                .filter(Cancion.titulo == r.titulo, Cancion.artista == r.artista)
-                .group_by(Emisora.id, Emisora.nombre)
-                .order_by(desc("plays"))
-                .limit(10)
-                .all()
-            )
-            breakdown_list = [{"emisora_id": b.id, "emisora_nombre": b.nombre, "plays": int(b.plays)} for b in bd]
-            total_emisoras = int(count_distinct_emisoras(r.titulo, r.artista))
-            master_key = make_master_key(r.artista or "", r.titulo or "")
-            out.append(
+        
+        out.append({
+            "id": None,
+            "titulo": r.titulo,
+            "artista": r.artista,
+            "total_plays": int(r.plays),
+            "total_emisoras": count_distinct_emisoras(r.titulo, r.artista),
+            "first_play": r.first_play.isoformat() if r.first_play else None,
+            "last_play": r.last_play.isoformat() if r.last_play else None,
+            "breakdown": [
                 {
-                    "id": None,
-                    "titulo": r.titulo,
-                    "artista": r.artista,
-                    "total_plays": int(r.plays),
-                    "total_emisoras": total_emisoras,
-                    "first_play": r.first_play.isoformat() if r.first_play else None,
-                    "last_play": r.last_play.isoformat() if r.last_play else None,
-                    "breakdown": breakdown_list,
-                    "master_key": master_key,
+                    "emisora_id": b.id,
+                    "emisora_nombre": b.nombre,
+                    "plays": int(b.plays)
                 }
-            )
-
+                for b in breakdown
+            ],
+            "master_key": make_master_key(r.artista or "", r.titulo or ""),
+        })
+    
     return jsonify(out)
 
 
-# ---------------------------
-# API: top por emisora (soporta period=all|weekly|monthly)
-# ---------------------------
-@app.route("/api/stats/top_by_station/<int:emisora_id>")
-def api_top_by_station(emisora_id):
-    limit = int(request.args.get("limit", 20))
-    period = request.args.get("period", "all")  # all, weekly, monthly
-
-    # Check emisora exists
-    emisora = Emisora.query.get(emisora_id)
-    if not emisora:
-        return jsonify({"error": "Emisora no encontrada"}), 404
-
-    # if master/per-station summary exists and period==all, prefer it
-    use_master = False
-    if period == "all" and HAS_MASTER and CancionPorEmisora is not None:
-        try:
-            cp_count = db.session.query(func.count(CancionPorEmisora.emisora_id)).scalar() or 0
-            if cp_count > 0:
-                use_master = True
-        except Exception:
-            use_master = False
-
-    if use_master:
-        rows = (
-            db.session.query(
-                CancionMaster.id.label("mid"),
-                CancionMaster.titulo,
-                CancionMaster.artista,
-                CancionPorEmisora.plays,
-            )
-            .join(CancionPorEmisora, CancionPorEmisora.master_id == CancionMaster.id)
-            .filter(CancionPorEmisora.emisora_id == emisora_id)
-            .order_by(desc(CancionPorEmisora.plays))
-            .limit(limit)
-            .all()
-        )
-        return jsonify([{"master_id": r.mid, "titulo": r.titulo, "artista": r.artista, "plays": int(r.plays)} for r in rows])
-    else:
-        since = None
-        if period == "weekly":
-            since = datetime.now() - timedelta(days=7)
-        elif period == "monthly":
-            since = datetime.now() - timedelta(days=30)
-
-        rows = (
-            db.session.query(
-                Cancion.titulo.label("titulo"),
-                Cancion.artista.label("artista"),
-                func.count(Cancion.id).label("plays"),
-            )
-            .filter(Cancion.emisora_id == emisora_id)
-            .filter(Cancion.fecha_reproduccion >= since) if since else db.session.query(
-                Cancion.titulo.label("titulo"),
-                Cancion.artista.label("artista"),
-                func.count(Cancion.id).label("plays"),
-            ).filter(Cancion.emisora_id == emisora_id)
-        )
-
-        # If we built a partial query earlier, ensure grouping and ordering
-        rows = rows.group_by(Cancion.titulo, Cancion.artista).order_by(desc("plays")).limit(limit).all()
-        out = [{"master_key": make_master_key(r.artista or "", r.titulo or ""), "titulo": r.titulo, "artista": r.artista, "plays": int(r.plays)} for r in rows]
-        return jsonify(out)
-
-
-# ---------------------------
-# API: top por País
-# ---------------------------
 @app.route("/api/stats/top_by_country/<string:country>")
 def api_top_by_country(country):
-    limit = int(request.args.get("limit", 20))
-    period = request.args.get("period", "all")  # all, weekly, monthly
-
+    """
+    Top canciones por país MEJORADO con normalización.
+    """
+    limit = int(request.args.get("limit", 50))
+    period = request.args.get("period", "all")
+    
+    # Normalizar país recibido
+    normalized = normalize_country_name(country)
+    
+    if not normalized:
+        return jsonify({"error": "País inválido"}), 400
+    
     since = None
     if period == "weekly":
         since = datetime.now() - timedelta(days=7)
     elif period == "monthly":
         since = datetime.now() - timedelta(days=30)
-
-    # Use Cancion table, join Emisora, filter by Emisora.pais
-    q = db.session.query(
-        Cancion.titulo.label("titulo"),
-        Cancion.artista.label("artista"),
-        func.count(Cancion.id).label("plays"),
-        func.min(Cancion.fecha_reproduccion).label("first_play"),
-        func.max(Cancion.fecha_reproduccion).label("last_play"),
-    ).join(Emisora, Emisora.id == Cancion.emisora_id).filter(func.lower(Emisora.pais) == country.lower())
-
-    if since:
-        q = q.filter(Cancion.fecha_reproduccion >= since)
-
-    q = q.group_by(Cancion.titulo, Cancion.artista).order_by(desc("plays")).limit(limit)
-    rows = q.all()
-    return jsonify(_assemble_top_from_rows(rows, use_master=False))
+    
+    try:
+        data = get_top_from_cancion(
+            limit=limit,
+            since=since,
+            country=normalized
+        )
+        
+        return jsonify(data)
+        
+    except Exception as e:
+        app.logger.error(f"Error en top_by_country: {e}")
+        return jsonify({"error": "Error obteniendo datos"}), 500
 
 
-# ---------------------------
-# API: Top semanal (global) + diff contra semana anterior
-# ---------------------------
+@app.route("/api/stats/countries")
+def api_countries():
+    """
+    Lista países con estadísticas MEJORADA.
+    Retorna solo países válidos y normalizados.
+    """
+    try:
+        countries = get_valid_countries()
+        return jsonify(countries)
+    except Exception as e:
+        app.logger.error(f"Error en api_countries: {e}")
+        return jsonify([]), 500
+
+
 @app.route("/api/stats/top_weekly")
 def api_top_weekly():
+    """Top semanal con diferencias."""
     limit = int(request.args.get("limit", 20))
-    # Top actual (últimos 7 días)
-    current = get_top_from_cancion(limit=limit, since=datetime.now() - timedelta(days=7))
-    # Top de la semana previa (días 8-14)
-    start_prev = datetime.now() - timedelta(days=14)
-    end_prev = datetime.now() - timedelta(days=7)
+    
+    current = get_top_from_cancion(
+        limit=limit,
+        since=datetime.now() - timedelta(days=7)
+    )
+    
     prev_rows = (
         db.session.query(
-            Cancion.titulo.label("titulo"),
-            Cancion.artista.label("artista"),
+            Cancion.titulo,
+            Cancion.artista,
             func.count(Cancion.id).label("plays"),
         )
-        .filter(Cancion.fecha_reproduccion >= start_prev)
-        .filter(Cancion.fecha_reproduccion < end_prev)
+        .filter(
+            Cancion.fecha_reproduccion >= datetime.now() - timedelta(days=14),
+            Cancion.fecha_reproduccion < datetime.now() - timedelta(days=7),
+            Cancion.artista != "Desconocido"
+        )
         .group_by(Cancion.titulo, Cancion.artista)
         .order_by(desc("plays"))
         .limit(limit)
         .all()
     )
-    prev = _assemble_top_from_rows(prev_rows, use_master=False)
-    # compute diff
+    
+    prev = _assemble_top_from_rows(prev_rows, use_master=False, include_dates=False)
     result = compute_rank_diff(current, prev)
+    
     return jsonify(result)
 
 
-# ---------------------------
-# API: Top mensual (global)
-# ---------------------------
 @app.route("/api/stats/top_monthly")
 def api_top_monthly():
+    """Top mensual con diferencias."""
     limit = int(request.args.get("limit", 20))
-    current = get_top_from_cancion(limit=limit, since=datetime.now() - timedelta(days=30))
-    # Previous month window for diff calculation (optional)
-    start_prev = datetime.now() - timedelta(days=60)
-    end_prev = datetime.now() - timedelta(days=30)
+    
+    current = get_top_from_cancion(
+        limit=limit,
+        since=datetime.now() - timedelta(days=30)
+    )
+    
     prev_rows = (
         db.session.query(
-            Cancion.titulo.label("titulo"),
-            Cancion.artista.label("artista"),
+            Cancion.titulo,
+            Cancion.artista,
             func.count(Cancion.id).label("plays"),
         )
-        .filter(Cancion.fecha_reproduccion >= start_prev)
-        .filter(Cancion.fecha_reproduccion < end_prev)
+        .filter(
+            Cancion.fecha_reproduccion >= datetime.now() - timedelta(days=60),
+            Cancion.fecha_reproduccion < datetime.now() - timedelta(days=30),
+            Cancion.artista != "Desconocido"
+        )
         .group_by(Cancion.titulo, Cancion.artista)
         .order_by(desc("plays"))
         .limit(limit)
         .all()
     )
-    prev = _assemble_top_from_rows(prev_rows, use_master=False)
+    
+    prev = _assemble_top_from_rows(prev_rows, use_master=False, include_dates=False)
     result = compute_rank_diff(current, prev)
+    
     return jsonify(result)
 
 
-# ---------------------------
-# API: reproducción actual por emisora (última canción)
-# ---------------------------
-@app.route("/api/stats/current_play/<int:emisora_id>")
-def api_current_play(emisora_id):
-    emisora = Emisora.query.get_or_404(emisora_id)
-    last = (
-        db.session.query(Cancion)
-        .filter(Cancion.emisora_id == emisora_id)
-        .order_by(Cancion.fecha_reproduccion.desc())
-        .limit(1)
-        .first()
+@app.route("/api/stats/timeseries")
+def api_timeseries():
+    """Serie temporal de reproducciones."""
+    hours = int(request.args.get("hours", 24))
+    since = datetime.now() - timedelta(hours=hours)
+    
+    rows = (
+        db.session.query(
+            func.date_trunc("hour", Cancion.fecha_reproduccion).label("hour"),
+            func.count(Cancion.id).label("plays"),
+        )
+        .filter(
+            Cancion.fecha_reproduccion >= since,
+            Cancion.artista != "Desconocido"
+        )
+        .group_by("hour")
+        .order_by("hour")
+        .all()
     )
-    if not last:
-        return jsonify({"emisora_id": emisora_id, "emisora_nombre": emisora.nombre, "current": None})
-    return jsonify({
-        "emisora_id": emisora_id,
-        "emisora_nombre": emisora.nombre,
-        "current": {
-            "titulo": last.titulo,
-            "artista": last.artista,
-            "fecha_reproduccion": last.fecha_reproduccion.isoformat() if last.fecha_reproduccion else None
+    
+    return jsonify([
+        {
+            "hour": r.hour.isoformat(),
+            "plays": int(r.plays)
         }
-    })
+        for r in rows
+    ])
 
 
-# ---------------------------
-# API: detalle canción + últimos plays
-# (sin cambios - mantiene comportamiento actual)
-# ---------------------------
 @app.route("/api/stats/song/<path:master_key>")
 def api_song_detail(master_key):
-    # If numeric ID and master table exists -> use it
-    if HAS_MASTER and master_key.isdigit():
-        master_id = int(master_key)
-        master = CancionMaster.query.get_or_404(master_id)
-        title = master.titulo
-        artist = master.artista
-        total_plays = int(master.total_plays or 0)
-        first_play = master.first_play
-        last_play = master.last_play
-        total_emisoras = int(count_distinct_emisoras_master(master_id))
-    else:
-        # parse artist|title key
-        artist, title = parse_master_key(master_key)
-        if title is None:
-            return jsonify({"error": "master_key inválida"}), 400
-        # compute summary from canciones
-        total_plays = (
-            db.session.query(func.count(Cancion.id))
-            .filter(Cancion.titulo == title, Cancion.artista == artist)
-            .scalar() or 0
-        )
-        first_play = (
-            db.session.query(func.min(Cancion.fecha_reproduccion))
-            .filter(Cancion.titulo == title, Cancion.artista == artist)
-            .scalar()
-        )
-        last_play = (
-            db.session.query(func.max(Cancion.fecha_reproduccion))
-            .filter(Cancion.titulo == title, Cancion.artista == artist)
-            .scalar()
-        )
-        total_emisoras = int(count_distinct_emisoras(title, artist))
-
-    # recent plays (with emisora name)
-    recent_q = (
-        db.session.query(Cancion, Emisora.nombre.label("emisora_nombre"))
+    """Detalle completo de una canción."""
+    artist, title = parse_master_key(master_key)
+    
+    if not title:
+        return jsonify({"error": "Clave inválida"}), 400
+    
+    total_plays = (
+        db.session.query(func.count(Cancion.id))
+        .filter(Cancion.titulo == title, Cancion.artista == artist)
+        .scalar() or 0
+    )
+    
+    first_play = (
+        db.session.query(func.min(Cancion.fecha_reproduccion))
+        .filter(Cancion.titulo == title, Cancion.artista == artist)
+        .scalar()
+    )
+    
+    last_play = (
+        db.session.query(func.max(Cancion.fecha_reproduccion))
+        .filter(Cancion.titulo == title, Cancion.artista == artist)
+        .scalar()
+    )
+    
+    recent = (
+        db.session.query(Cancion, Emisora.nombre)
         .outerjoin(Emisora, Emisora.id == Cancion.emisora_id)
         .filter(Cancion.titulo == title, Cancion.artista == artist)
         .order_by(Cancion.fecha_reproduccion.desc())
         .limit(200)
         .all()
     )
+    
     recent_plays = [
-        {"emisora_id": c.Cancion.emisora_id, "emisora_nombre": c.emisora_nombre, "fecha": c.Cancion.fecha_reproduccion.isoformat()}
-        for c in recent_q
+        {
+            "emisora_id": c.Cancion.emisora_id,
+            "emisora_nombre": c.nombre,
+            "fecha": c.Cancion.fecha_reproduccion.isoformat()
+        }
+        for c in recent
     ]
-
-    # per-station counts (top stations)
+    
     per_station = (
-        db.session.query(Emisora.id, Emisora.nombre, func.count(Cancion.id).label("plays"))
+        db.session.query(
+            Emisora.id,
+            Emisora.nombre,
+            func.count(Cancion.id).label("plays")
+        )
         .join(Cancion, Cancion.emisora_id == Emisora.id)
         .filter(Cancion.titulo == title, Cancion.artista == artist)
         .group_by(Emisora.id, Emisora.nombre)
@@ -812,123 +882,113 @@ def api_song_detail(master_key):
         .limit(50)
         .all()
     )
-    per_station_list = [{"emisora_id": r.id, "emisora_nombre": r.nombre, "plays": int(r.plays)} for r in per_station]
-
+    
     return jsonify({
         "titulo": title,
         "artista": artist,
         "total_plays": int(total_plays),
-        "total_emisoras": total_emisoras,
+        "total_emisoras": count_distinct_emisoras(title, artist),
         "first_play": first_play.isoformat() if first_play else None,
         "last_play": last_play.isoformat() if last_play else None,
-        "per_station": per_station_list,
+        "per_station": [
+            {
+                "emisora_id": r.id,
+                "emisora_nombre": r.nombre,
+                "plays": int(r.plays)
+            }
+            for r in per_station
+        ],
         "recent_plays": recent_plays,
     })
 
 
-# ---------------------------
-# API: timeseries global (agrupado por hora)
-# ---------------------------
-@app.route("/api/stats/timeseries")
-def api_timeseries():
-    hours = int(request.args.get("hours", 24))
-    since = datetime.now() - timedelta(hours=hours)
-    rows = (
-        db.session.query(
-            func.date_trunc("hour", Cancion.fecha_reproduccion).label("hour"),
-            func.count(Cancion.id).label("plays"),
-        )
-        .filter(Cancion.fecha_reproduccion >= since)
-        .group_by("hour")
-        .order_by("hour")
-        .all()
-    )
-    return jsonify([{"hour": r.hour.isoformat(), "plays": int(r.plays)} for r in rows])
-
-
-# ---------------------------
-# Página de emisora: Top semanal, mensual, reproducción actual, top artistas
-# ---------------------------
-@app.route("/emisora/<int:emisora_id>")
-def emisora_page(emisora_id):
+@app.route("/api/stats/current_play/<int:emisora_id>")
+def api_current_play(emisora_id):
+    """Reproducción actual de una emisora."""
     emisora = Emisora.query.get_or_404(emisora_id)
-
-    # Current play
-    current = None
+    
     last = (
-        db.session.query(Cancion)
-        .filter(Cancion.emisora_id == emisora_id)
+        Cancion.query
+        .filter_by(emisora_id=emisora_id)
         .order_by(Cancion.fecha_reproduccion.desc())
-        .limit(1)
         .first()
     )
-    if last:
+    
+    if not last:
+        current = None
+    else:
         current = {
             "titulo": last.titulo,
             "artista": last.artista,
-            "fecha_reproduccion": last.fecha_reproduccion
+            "fecha_reproduccion": last.fecha_reproduccion.isoformat()
         }
-
-    # Top weekly & monthly (use Cancion table filtered by emisora_id)
-    top_weekly = get_top_from_cancion(limit=50, since=datetime.now() - timedelta(days=7), emisora_id=emisora_id)
-    top_monthly = get_top_from_cancion(limit=50, since=datetime.now() - timedelta(days=30), emisora_id=emisora_id)
-
-    # top artists for this emisora (aggregated)
-    artists_q = (
-        db.session.query(Cancion.artista, func.count(Cancion.id).label("plays"))
-        .filter(Cancion.emisora_id == emisora_id)
-        .group_by(Cancion.artista)
-        .order_by(desc("plays"))
-        .limit(50)
-        .all()
-    )
-    top_artists = [{"artista": r.artista, "plays": int(r.plays)} for r in artists_q]
-
-    # For ranking diffs: compute previous week for emisora
-    prev_rows = (
-        db.session.query(
-            Cancion.titulo.label("titulo"),
-            Cancion.artista.label("artista"),
-            func.count(Cancion.id).label("plays"),
-        )
-        .filter(Cancion.emisora_id == emisora_id)
-        .filter(Cancion.fecha_reproduccion >= datetime.now() - timedelta(days=14))
-        .filter(Cancion.fecha_reproduccion < datetime.now() - timedelta(days=7))
-        .group_by(Cancion.titulo, Cancion.artista)
-        .order_by(desc("plays"))
-        .limit(50)
-        .all()
-    )
-    prev_week = _assemble_top_from_rows(prev_rows, use_master=False)
-    top_weekly_with_diff = compute_rank_diff(top_weekly, prev_week)
-
-    return render_template(
-        "emisora.html",
-        emisora=emisora,
-        current=current,
-        top_weekly=top_weekly_with_diff,
-        top_monthly=top_monthly,
-        top_artists=top_artists,
-    )
+    
+    return jsonify({
+        "emisora_id": emisora_id,
+        "emisora_nombre": emisora.nombre,
+        "current": current
+    })
 
 
-# ---------------------------
-# Run
-# ---------------------------
+# ============================================================================
+# COMANDO DE NORMALIZACIÓN (NUEVO)
+# ============================================================================
+
+@app.cli.command("normalize-countries")
+def normalize_countries_command():
+    """
+    Comando CLI para normalizar países en la base de datos.
+    Uso: flask normalize-countries
+    """
+    print("🔧 Iniciando normalización de países...")
+    
+    try:
+        emisoras = Emisora.query.all()
+        updated = 0
+        skipped = 0
+        
+        for emisora in emisoras:
+            if emisora.pais:
+                normalized = normalize_country_name(emisora.pais)
+                
+                if normalized and normalized != emisora.pais:
+                    old_name = emisora.pais
+                    emisora.pais = normalized
+                    updated += 1
+                    print(f"  ✓ {old_name} → {normalized}")
+                elif not normalized:
+                    print(f"  ⚠️  Omitido (inválido): {emisora.pais}")
+                    skipped += 1
+        
+        db.session.commit()
+        print(f"\n✅ Normalización completada:")
+        print(f"   - {updated} países actualizados")
+        print(f"   - {skipped} omitidos")
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"\n❌ Error: {e}")
+
+
+# ============================================================================
+# INICIALIZACIÓN
+# ============================================================================
+
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
         start_monitor_thread()
-    # dev server
-    app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)
+    
+    app.run(
+        host="0.0.0.0",
+        port=5000,
+        debug=False,
+        use_reloader=False
+    )
 
-
-# ---------------------------
-# Lanzar el monitor también cuando se ejecute con Gunicorn
-# ---------------------------
+# Iniciar monitor también con Gunicorn
 try:
-    # Si la app se importa (por Gunicorn), arrancar el monitor
     with app.app_context():
         start_monitor_thread()
 except Exception as e:
-    app.logger.error(f"No se pudo iniciar el monitor automáticamente: {e}")
+    app.logger.error(f"Error iniciando monitor: {e}")
