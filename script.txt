@@ -329,3 +329,8 @@ ADD COLUMN IF NOT EXISTS sitio_web VARCHAR(255);
 ALTER TABLE canciones_por_emisora
 ADD CONSTRAINT canciones_por_emisora_unique UNIQUE (master_id, emisora_id);
 
+ALTER TABLE canciones ADD COLUMN IF NOT EXISTS genero VARCHAR(100) DEFAULT 'Desconocido';
+
+-- Verificar que se agregó
+SELECT column_name, data_type FROM information_schema.columns 
+WHERE table_name = 'canciones';
