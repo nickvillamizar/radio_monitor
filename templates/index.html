@@ -4,9 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Radio Monitor — Panel</title>
-
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -19,14 +17,15 @@
       <div class="header-actions">
         <div class="small-muted">Intervalo: {{ config.MONITOR_INTERVAL }}s</div>
         <button id="refresh-btn" class="btn-outline">Actualizar ahora</button>
+        <!-- NUEVO: Botón para ingresar canción manualmente -->
+        <button id="manual-song-btn" class="btn-primary">➕ Ingresar canción</button>
       </div>
     </div>
   </header>
 
   <main class="container main-grid">
-
     <aside class="left-col">
-      <!-- Filtro por País/Región (NUEVA FUNCIONALIDAD) -->
+      <!-- Filtro por País/Región -->
       <section class="card">
         <div class="card-header">
           <h3>Filtro por región</h3>
@@ -34,13 +33,19 @@
         <div class="form-inline" style="padding: 1rem;">
           <select id="country-filter" class="select-sm" style="flex: 1;">
             <option value="">🌎 Global (todos los países)</option>
-            <!-- Se carga dinámicamente desde /api/stats/countries -->
           </select>
           <select id="period-filter" class="select-sm">
             <option value="all">Todo el tiempo</option>
             <option value="weekly">Última semana</option>
             <option value="monthly">Último mes</option>
+            <!-- NUEVO: Opción para semana específica -->
+            <option value="specific_week">📅 Semana específica</option>
           </select>
+        </div>
+        <!-- NUEVO: Selector de semana (oculto por defecto) -->
+        <div id="week-selector-container" style="padding: 0 1rem 1rem; display: none;">
+          <label style="display: block; margin-bottom: 0.5rem; font-size: 0.875rem; color: #aaa;">Seleccionar semana:</label>
+          <input type="week" id="week-selector" class="input-sm" style="width: 100%;">
         </div>
       </section>
 
@@ -49,10 +54,11 @@
           <h3>Top canciones</h3>
           <div class="card-actions">
             <button id="export-top-csv" class="btn-ghost">Exportar CSV</button>
+            <!-- MODIFICADO: Top 15, 30, 75 -->
             <select id="top-limit" class="select-sm">
-              <option value="10">Top 10</option>
-              <option value="20" selected>Top 20</option>
-              <option value="50">Top 50</option>
+              <option value="15">Top 15</option>
+              <option value="30" selected>Top 30</option>
+              <option value="75">Top 75</option>
             </select>
           </div>
         </div>
@@ -63,7 +69,6 @@
             <div class="list-item" data-master-id="{{ s.id if s.id else '' }}" data-master-key="{{ s.master_key if s.master_key else '' }}">
               <div class="list-rank">{{ loop.index }}</div>
               <div class="list-main">
-                <!-- CORREGIDO: Validar master_key antes de cargar imagen -->
                 {% if s.master_key %}
                   <img class="thumb" src="/image/song/{{ s.master_key }}" alt="Portada" loading="lazy"
                        onerror="this.onerror=null; this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22%3E%3Crect fill=%22%23333%22 width=%2248%22 height=%2248%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23888%22 font-size=%2214%22%3E🎵%3C/text%3E%3C/svg%3E';">
@@ -195,7 +200,6 @@
                     {% endfor %}
                   </td>
                   <td>
-                    <!-- Thumb del artista con fallback SVG inline -->
                     <img class="artist-thumb" src="/image/artist/{{ (s.artista|urlencode) }}" alt="Artista" loading="lazy"
                          onerror="this.onerror=null; this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2232%22 height=%2232%22%3E%3Ccircle cx=%2216%22 cy=%2216%22 r=%2216%22 fill=%22%23444%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23999%22 font-size=%2212%22%3E👤%3C/text%3E%3C/svg%3E';">
                     {{ s.artista or '—' }}
@@ -265,25 +269,54 @@
     </div>
   </div>
 
+  <!-- NUEVO: Modal para ingresar canción manualmente -->
+  <div id="manual-song-modal" class="modal" aria-hidden="true">
+    <div class="modal-panel">
+      <button id="manual-song-close" class="modal-close" aria-label="Cerrar">✕</button>
+      <h2>➕ Ingresar canción manualmente</h2>
+      <p style="color: #aaa; font-size: 0.875rem; margin-bottom: 1.5rem;">
+        ⚠️ Nota: Este registro es temporal y se eliminará en el próximo ciclo de actualización automática.
+      </p>
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="manual-song-title">Nombre de la canción *</label>
+          <input type="text" id="manual-song-title" class="input-sm" placeholder="Ej: Waka Waka" required>
+        </div>
+        <div class="form-group">
+          <label for="manual-song-artist">Artista *</label>
+          <input type="text" id="manual-song-artist" class="input-sm" placeholder="Ej: Shakira" required>
+        </div>
+        <div class="form-group">
+          <label for="manual-song-station">Emisora *</label>
+          <select id="manual-song-station" class="select-sm" required>
+            <option value="">Seleccionar emisora...</option>
+            <!-- Se carga dinámicamente -->
+          </select>
+        </div>
+        <div class="form-group" style="grid-column: 1 / -1;">
+          <button id="save-manual-song" class="btn-primary" style="width: 100%; padding: 0.75rem;">
+            💾 Guardar canción
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
-    // ============================================================================
-    // API ENDPOINTS - Incluye nuevos endpoints por país
-    // ============================================================================
+    // API ENDPOINTS
     const api = {
-      topSongs: (limit=20) => `/api/stats/top_songs?limit=${limit}`,
-      topByCountry: (country, limit=20, period='all') => `/api/stats/top_by_country/${encodeURIComponent(country)}?limit=${limit}&period=${period}`,
+      topSongs: (limit=30) => `/api/stats/top_songs?limit=${limit}`,
+      topByCountry: (country, limit=30, period='all') => `/api/stats/top_by_country/${encodeURIComponent(country)}?limit=${limit}&period=${period}`,
+      topByWeek: (week, limit=30) => `/api/stats/top_by_week?week=${week}&limit=${limit}`, // NUEVO
       countries: () => `/api/stats/countries`,
-      topWeekly: (limit=20) => `/api/stats/top_weekly?limit=${limit}`,
-      topMonthly: (limit=20) => `/api/stats/top_monthly?limit=${limit}`,
+      topWeekly: (limit=30) => `/api/stats/top_weekly?limit=${limit}`,
+      topMonthly: (limit=30) => `/api/stats/top_monthly?limit=${limit}`,
       timeseries: (hours=24) => `/api/stats/timeseries?hours=${hours}`,
       songDetail: (master_key) => `/api/stats/song/${encodeURIComponent(master_key)}`,
-      topByStation: (id, limit=20) => `/api/stats/top_by_station/${id}?limit=${limit}`,
-      currentPlay: (id) => `/api/stats/current_play/${id}`
+      manualSong: () => `/api/manual_song`, // NUEVO
     };
 
-    // ============================================================================
     // UTILIDADES
-    // ============================================================================
     function showNotification(message, type = 'info') {
       const notification = document.createElement('div');
       notification.style.cssText = 'position:fixed;top:20px;right:20px;background:' + (type === 'error' ? '#ff4c4c' : '#00e8a2') + ';color:#fff;padding:12px 16px;border-radius:8px;z-index:10000;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,0.3);';
@@ -299,7 +332,6 @@
       return head + '\n' + body;
     }
 
-    // Función helper para crear imagen SVG por defecto
     function getDefaultSongImage() {
       return 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22%3E%3Crect fill=%22%23333%22 width=%2248%22 height=%2248%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23888%22 font-size=%2214%22%3E🎵%3C/text%3E%3C/svg%3E';
     }
@@ -308,13 +340,13 @@
       return 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2224%22 height=%2224%22%3E%3Crect fill=%22%23555%22 width=%2224%22 height=%2224%22 rx=%224%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23aaa%22 font-size=%2210%22%3E📻%3C/text%3E%3C/svg%3E';
     }
 
-    // ============================================================================
-    // CARGA DE PAÍSES (NUEVA FUNCIONALIDAD)
-    // ============================================================================
+    // VARIABLES GLOBALES
     let currentCountry = '';
     let currentPeriod = 'all';
-    let currentLimit = 20;
+    let currentLimit = 30;
+    let currentWeek = '';
 
+    // CARGA DE PAÍSES
     async function loadCountries() {
       try {
         const res = await fetch(api.countries());
@@ -338,22 +370,42 @@
       }
     }
 
-    // ============================================================================
-    // ACTUALIZACIÓN DE TOP CON FILTROS (NUEVA FUNCIONALIDAD)
-    // ============================================================================
+    // ACTUALIZACIÓN DE TOP CON FILTROS (MODIFICADO)
     async function updateTopByFilter() {
       const country = document.getElementById('country-filter').value;
       const period = document.getElementById('period-filter').value;
-      const limit = parseInt(document.getElementById('top-limit').value || 20);
+      const limit = parseInt(document.getElementById('top-limit').value || 30);
       
       currentCountry = country;
       currentPeriod = period;
       currentLimit = limit;
 
+      // NUEVO: Mostrar/ocultar selector de semana
+      const weekContainer = document.getElementById('week-selector-container');
+      if (period === 'specific_week') {
+        weekContainer.style.display = 'block';
+        const week = document.getElementById('week-selector').value;
+        if (!week) {
+          document.getElementById('top-songs-list').innerHTML = '<div class="empty">Por favor selecciona una semana</div>';
+          return;
+        }
+        currentWeek = week;
+      } else {
+        weekContainer.style.display = 'none';
+      }
+
       try {
         let data;
         
-        if (country) {
+        // NUEVO: Caso para semana específica
+        if (period === 'specific_week') {
+          const week = document.getElementById('week-selector').value;
+          if (!week) return;
+          const res = await fetch(api.topByWeek(week, limit));
+          if (!res.ok) throw new Error('Error cargando top por semana');
+          data = await res.json();
+        }
+        else if (country) {
           const res = await fetch(api.topByCountry(country, limit, period));
           if (!res.ok) throw new Error('Error cargando top por país');
           data = await res.json();
@@ -419,10 +471,9 @@
     document.getElementById('country-filter').addEventListener('change', updateTopByFilter);
     document.getElementById('period-filter').addEventListener('change', updateTopByFilter);
     document.getElementById('top-limit').addEventListener('change', updateTopByFilter);
+    document.getElementById('week-selector').addEventListener('change', updateTopByFilter); // NUEVO
 
-    // ============================================================================
     // GRÁFICA DE SERIES TEMPORALES
-    // ============================================================================
     let timeseriesChart = null;
     async function loadTimeseries(hours = 24) {
       try {
@@ -467,9 +518,7 @@
       loadTimeseries(parseInt(e.target.value));
     });
 
-    // ============================================================================
     // MODAL DE DETALLE DE CANCIÓN
-    // ============================================================================
     const modal = document.getElementById('song-modal');
     const modalTitle = document.getElementById('modal-title');
     const modalPlays = document.getElementById('modal-plays');
@@ -551,9 +600,7 @@
       }
     });
 
-    // ============================================================================
     // FILTROS DE BÚSQUEDA EN TABLAS
-    // ============================================================================
     document.getElementById('filter-station').addEventListener('input', (e) => {
       const q = e.target.value.toLowerCase();
       document.querySelectorAll('#emisoras-table tbody tr').forEach(tr => {
@@ -568,15 +615,15 @@
       });
     });
 
-    // ============================================================================
     // EXPORTACIÓN CSV
-    // ============================================================================
     document.getElementById('export-top-csv').addEventListener('click', async () => {
       try {
         const limit = currentLimit;
         let res;
         
-        if (currentCountry) {
+        if (currentPeriod === 'specific_week' && currentWeek) {
+          res = await fetch(api.topByWeek(currentWeek, limit));
+        } else if (currentCountry) {
           res = await fetch(api.topByCountry(currentCountry, limit, currentPeriod));
         } else if (currentPeriod === 'weekly') {
           res = await fetch(api.topWeekly(limit));
@@ -639,9 +686,7 @@
       }
     });
 
-    // ============================================================================
     // MODAL DE ADMINISTRACIÓN DE EMISORAS
-    // ============================================================================
     const emisorasModal = document.getElementById('emisoras-modal');
     const emisorasTableBody = document.querySelector('#emisoras-admin-table tbody');
 
@@ -701,7 +746,7 @@
           if (!res.ok) throw new Error('Error actualizando');
           showNotification('Emisora actualizada correctamente');
           await refrescarTablaEmisoras();
-          await loadCountries(); // Recargar países si cambió
+          await loadCountries();
         } catch (err) {
           console.error('Error guardando:', err);
           showNotification('Error actualizando emisora', 'error');
@@ -719,7 +764,7 @@
           tr.remove();
           showNotification('Emisora eliminada correctamente');
           await refrescarTablaEmisoras();
-          await loadCountries(); // Recargar países
+          await loadCountries();
         } catch (err) {
           console.error('Error eliminando:', err);
           showNotification('Error eliminando emisora', 'error');
@@ -752,7 +797,7 @@
         showNotification('Emisora agregada correctamente');
         await cargarEmisoras();
         await refrescarTablaEmisoras();
-        await loadCountries(); // Recargar países
+        await loadCountries();
       } catch (err) {
         console.error('Error agregando:', err);
         showNotification('Error agregando emisora', 'error');
@@ -782,15 +827,106 @@
     }
 
     // ============================================================================
-    // BOTÓN DE REFRESH GLOBAL
+    // NUEVO: MODAL PARA INGRESAR CANCIÓN MANUALMENTE
     // ============================================================================
+    const manualSongModal = document.getElementById('manual-song-modal');
+    const manualSongBtn = document.getElementById('manual-song-btn');
+    const manualSongClose = document.getElementById('manual-song-close');
+    const saveManualSongBtn = document.getElementById('save-manual-song');
+    const manualSongStationSelect = document.getElementById('manual-song-station');
+
+    // Abrir modal
+    manualSongBtn.addEventListener('click', async () => {
+      manualSongModal.classList.add('open');
+      manualSongModal.setAttribute('aria-hidden', 'false');
+      
+      // Limpiar campos
+      document.getElementById('manual-song-title').value = '';
+      document.getElementById('manual-song-artist').value = '';
+      manualSongStationSelect.value = '';
+      
+      // Cargar emisoras en el select
+      try {
+        const res = await fetch('/api/emisoras');
+        if (!res.ok) throw new Error('Error cargando emisoras');
+        const emisoras = await res.json();
+        
+        manualSongStationSelect.innerHTML = '<option value="">Seleccionar emisora...</option>';
+        emisoras.forEach(e => {
+          const option = document.createElement('option');
+          option.value = e.id;
+          option.textContent = e.nombre;
+          manualSongStationSelect.appendChild(option);
+        });
+      } catch (err) {
+        console.error('Error cargando emisoras:', err);
+        showNotification('Error cargando emisoras', 'error');
+      }
+    });
+
+    // Cerrar modal
+    manualSongClose.addEventListener('click', () => {
+      manualSongModal.classList.remove('open');
+      manualSongModal.setAttribute('aria-hidden', 'true');
+    });
+
+    // Guardar canción manual
+    saveManualSongBtn.addEventListener('click', async () => {
+      const titulo = document.getElementById('manual-song-title').value.trim();
+      const artista = document.getElementById('manual-song-artist').value.trim();
+      const emisora_id = parseInt(manualSongStationSelect.value);
+
+      // Validar campos
+      if (!titulo) {
+        showNotification('El nombre de la canción es obligatorio', 'error');
+        return;
+      }
+      if (!artista) {
+        showNotification('El artista es obligatorio', 'error');
+        return;
+      }
+      if (!emisora_id) {
+        showNotification('Debes seleccionar una emisora', 'error');
+        return;
+      }
+
+      try {
+        const res = await fetch(api.manualSong(), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            titulo: titulo,
+            artista: artista,
+            emisora_id: emisora_id
+          })
+        });
+
+        if (!res.ok) {
+          const error = await res.json();
+          throw new Error(error.error || 'Error guardando canción');
+        }
+
+        showNotification('✅ Canción registrada correctamente (temporal)', 'info');
+        
+        // Cerrar modal
+        manualSongModal.classList.remove('open');
+        manualSongModal.setAttribute('aria-hidden', 'true');
+        
+        // Opcional: refrescar la página para ver el cambio
+        setTimeout(() => location.reload(), 1500);
+        
+      } catch (err) {
+        console.error('Error guardando canción:', err);
+        showNotification(err.message, 'error');
+      }
+    });
+
+    // BOTÓN DE REFRESH GLOBAL
     document.getElementById('refresh-btn').addEventListener('click', () => {
       location.reload();
     });
 
-    // ============================================================================
     // ATAJOS DE TECLADO
-    // ============================================================================
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         closeModal();
@@ -798,21 +934,21 @@
           emisorasModal.classList.remove('open');
           emisorasModal.setAttribute('aria-hidden', 'true');
         }
+        if (manualSongModal.classList.contains('open')) {
+          manualSongModal.classList.remove('open');
+          manualSongModal.setAttribute('aria-hidden', 'true');
+        }
       }
     });
 
-    // ============================================================================
     // INICIALIZACIÓN AL CARGAR LA PÁGINA
-    // ============================================================================
     document.addEventListener('DOMContentLoaded', async () => {
-      // Cargar países disponibles
       await loadCountries();
       
-      // Cargar gráfica de actividad
       const hours = parseInt(document.getElementById('timeseries-hours').value || 24);
       await loadTimeseries(hours);
       
-      // Cargar filtros persistidos en localStorage
+      // Cargar filtros persistidos
       try {
         const savedCountry = localStorage.getItem('radio_filter_country');
         const savedPeriod = localStorage.getItem('radio_filter_period');
@@ -830,7 +966,7 @@
       }
     });
 
-    // Guardar filtros en localStorage al cambiar
+    // Guardar filtros en localStorage
     document.getElementById('country-filter').addEventListener('change', (e) => {
       try {
         localStorage.setItem('radio_filter_country', e.target.value);
@@ -847,9 +983,7 @@
       }
     });
 
-    // ============================================================================
-    // ESTILOS ADICIONALES INLINE (badges de ranking y elementos visuales)
-    // ============================================================================
+    // ESTILOS ADICIONALES
     const style = document.createElement('style');
     style.textContent = `
       .rank-badge {
@@ -860,18 +994,9 @@
         font-weight: 700;
         margin-left: 8px;
       }
-      .rank-badge.new {
-        background: #00e8a2;
-        color: #000;
-      }
-      .rank-badge.up {
-        background: #4caf50;
-        color: #fff;
-      }
-      .rank-badge.down {
-        background: #ff4444;
-        color: #fff;
-      }
+      .rank-badge.new { background: #00e8a2; color: #000; }
+      .rank-badge.up { background: #4caf50; color: #fff; }
+      .rank-badge.down { background: #ff4444; color: #fff; }
       .station-logo {
         width: 24px;
         height: 24px;
@@ -901,17 +1026,13 @@
         padding: 8px 0;
         border-bottom: 1px solid rgba(255,255,255,0.1);
       }
-      .breakdown-row:last-child {
-        border-bottom: none;
-      }
+      .breakdown-row:last-child { border-bottom: none; }
       .form-inline {
         display: flex;
         gap: 8px;
         margin-top: 1rem;
       }
-      .form-inline input {
-        flex: 1;
-      }
+      .form-inline input { flex: 1; }
       .btn-small {
         padding: 4px 8px;
         font-size: 0.875rem;
@@ -920,12 +1041,8 @@
         cursor: pointer;
         transition: transform 0.2s;
       }
-      .btn-small:hover {
-        transform: scale(1.2);
-      }
-      .modal.open {
-        display: flex;
-      }
+      .btn-small:hover { transform: scale(1.2); }
+      .modal.open { display: flex; }
       .modal {
         display: none;
         position: fixed;
@@ -948,9 +1065,7 @@
         overflow-y: auto;
         position: relative;
       }
-      .modal-panel.large {
-        max-width: 1200px;
-      }
+      .modal-panel.large { max-width: 1200px; }
       .modal-close {
         position: absolute;
         top: 1rem;
@@ -964,9 +1079,7 @@
         line-height: 1;
         transition: transform 0.2s;
       }
-      .modal-close:hover {
-        transform: rotate(90deg);
-      }
+      .modal-close:hover { transform: rotate(90deg); }
       .modal-meta {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -980,13 +1093,23 @@
         cursor: pointer;
         transition: background 0.2s;
       }
-      .list-item:hover {
-        background: rgba(255,255,255,0.05);
-      }
+      .list-item:hover { background: rgba(255,255,255,0.05); }
       .empty {
         padding: 2rem;
         text-align: center;
         color: #888;
+      }
+      .form-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 1rem;
+      }
+      .form-group label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: #ddd;
       }
     `;
     document.head.appendChild(style);

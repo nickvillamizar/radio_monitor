@@ -334,3 +334,4 @@ ALTER TABLE canciones ADD COLUMN IF NOT EXISTS genero VARCHAR(100) DEFAULT 'Desc
 -- Verificar que se agregó
 SELECT column_name, data_type FROM information_schema.columns 
 WHERE table_name = 'canciones';
+ALTER TABLE canciones ADD COLUMN IF NOT EXISTS genero VARCHAR(100) DEFAULT 'Desconocido';

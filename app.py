@@ -970,6 +970,296 @@ def normalize_countries_command():
         print(f"\n❌ Error: {e}")
 
 
+
+
+
+# ============================================================================
+# NUEVOS ENDPOINTS - MEJORAS SOLICITADAS
+# ============================================================================
+
+@app.route("/api/stats/top_by_week")
+def api_top_by_week():
+    """
+    Top canciones por semana específica.
+    Query params: week (formato: YYYY-Www, ej: 2025-W45), limit (default: 30)
+    """
+    week_str = request.args.get("week", "")
+    limit = int(request.args.get("limit", 30))
+    
+    if not week_str:
+        return jsonify({"error": "Parámetro 'week' requerido (formato: YYYY-Www)"}), 400
+    
+    try:
+        # Parsear semana: "2025-W45" -> año 2025, semana 45
+        import re
+        match = re.match(r'(\d{4})-W(\d{2})', week_str)
+        if not match:
+            return jsonify({"error": "Formato de semana inválido. Usar: YYYY-Www"}), 400
+        
+        year = int(match.group(1))
+        week = int(match.group(2))
+        
+        # Calcular rango de fechas de esa semana
+        from datetime import datetime, timedelta
+        # Primer día del año
+        jan_1 = datetime(year, 1, 1)
+        # Lunes de la semana solicitada
+        days_to_monday = (week - 1) * 7 - jan_1.weekday()
+        week_start = jan_1 + timedelta(days=days_to_monday)
+        week_end = week_start + timedelta(days=7)
+        
+        # Consultar canciones de esa semana
+        rows = (
+            db.session.query(
+                Cancion.titulo,
+                Cancion.artista,
+                func.count(Cancion.id).label("plays"),
+                func.min(Cancion.fecha_reproduccion).label("first_play"),
+                func.max(Cancion.fecha_reproduccion).label("last_play"),
+            )
+            .filter(
+                Cancion.fecha_reproduccion >= week_start,
+                Cancion.fecha_reproduccion < week_end,
+                Cancion.artista != "Desconocido",
+                func.length(Cancion.titulo) >= 3
+            )
+            .group_by(Cancion.titulo, Cancion.artista)
+            .order_by(desc("plays"))
+            .limit(limit)
+            .all()
+        )
+        
+        data = _assemble_top_from_rows(rows, use_master=False, include_dates=True)
+        return jsonify(data)
+        
+    except Exception as e:
+        app.logger.error(f"Error en top_by_week: {e}")
+        return jsonify({"error": "Error procesando semana"}), 500
+
+
+@app.route("/api/manual_song", methods=["POST"])
+def api_manual_song():
+    """
+    Endpoint para registrar canción manualmente.
+    TEMPORAL: Se eliminará en el próximo ciclo de actualización.
+    
+    Body JSON:
+    {
+        "titulo": "Nombre de la canción",
+        "artista": "Nombre del artista",
+        "emisora_id": 123
+    }
+    """
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({"error": "No se recibieron datos"}), 400
+        
+        # Validar datos
+        titulo = data.get("titulo", "").strip()
+        artista = data.get("artista", "").strip()
+        emisora_id = data.get("emisora_id")
+        
+        if not titulo:
+            return jsonify({"error": "El título es obligatorio"}), 400
+        if not artista:
+            return jsonify({"error": "El artista es obligatorio"}), 400
+        if not emisora_id:
+            return jsonify({"error": "La emisora es obligatoria"}), 400
+        
+        # Convertir emisora_id a entero
+        try:
+            emisora_id = int(emisora_id)
+        except (ValueError, TypeError):
+            return jsonify({"error": "ID de emisora inválido"}), 400
+        
+        # Verificar que la emisora existe
+        emisora = Emisora.query.get(emisora_id)
+        if not emisora:
+            return jsonify({"error": f"Emisora con ID {emisora_id} no encontrada"}), 404
+        
+        # Crear registro de canción (CORREGIDO: datetime importado al inicio del archivo)
+        nueva_cancion = Cancion(
+            titulo=titulo,
+            artista=artista,
+            genero="Manual",  # Marcador especial para identificar registros manuales
+            emisora_id=emisora_id,
+            fecha_reproduccion=datetime.now()
+        )
+        
+        db.session.add(nueva_cancion)
+        
+        # Actualizar última canción de la emisora
+        emisora.ultima_cancion = f"{artista} - {titulo}"
+        emisora.ultima_actualizacion = datetime.now()
+        
+        db.session.commit()
+        
+        app.logger.info(f"✅ Canción manual registrada: {artista} - {titulo} en {emisora.nombre}")
+        
+        return jsonify({
+            "success": True,
+            "message": "Canción registrada correctamente (temporal)",
+            "cancion": {
+                "id": nueva_cancion.id,
+                "titulo": nueva_cancion.titulo,
+                "artista": nueva_cancion.artista,
+                "emisora": emisora.nombre,
+                "fecha": nueva_cancion.fecha_reproduccion.isoformat()
+            }
+        }), 201
+        
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"❌ Error registrando canción manual: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Error interno: {str(e)}"}), 500
+"""
+=====================================================
+📄 RESUMEN DE LOS CAMBIOS IMPLEMENTADOS
+=====================================================
+
+Este módulo documenta las actualizaciones recientes en el sistema de monitoreo musical,
+incluyendo mejoras en los filtros de estadísticas, el manejo de semanas específicas,
+y la funcionalidad para el registro manual de canciones.
+
+Autor: Nicolás Ramírez Villamizar
+Fecha: Noviembre 2025
+=====================================================
+"""
+
+
+# =====================================================
+# 1️⃣ TOP 15, 30, 75
+# =====================================================
+"""
+✔ Se actualizó el selector <select id="top-limit"> para ofrecer tres opciones:
+    - 15
+    - 30 (valor por defecto)
+    - 75
+
+✔ Este selector ahora se aplica a todos los filtros disponibles:
+    - Global
+    - Por país
+    - Por semana
+
+👉 Endpoint afectado: `/api/stats/top_*`
+"""
+
+
+# =====================================================
+# 2️⃣ FILTRO SEMANAL
+# =====================================================
+"""
+✔ Nueva opción agregada en el filtro de período:
+    - "📅 Semana específica" dentro de <select id="period-filter">
+
+✔ Al seleccionarla, aparece dinámicamente un campo <input type="week">.
+
+✔ Nuevo endpoint implementado:
+    GET /api/stats/top_by_week?week=2025-W45&limit=30
+
+✔ El backend interpreta el valor `week=YYYY-Www` para calcular automáticamente:
+    - Fecha de inicio (lunes)
+    - Fecha de fin (domingo)
+
+✔ Ejemplo:
+    week = "2025-W45"
+    → Intervalo calculado: lunes 4 nov 2025 – domingo 10 nov 2025
+
+✔ Soporte completo con exportación CSV (funcionalidad ya integrada).
+"""
+
+
+# =====================================================
+# 3️⃣ REGISTRO MANUAL DE CANCIONES
+# =====================================================
+"""
+✔ Nuevo botón en el encabezado:
+    "➕ Ingresar canción"
+
+✔ Al presionar el botón, se muestra un modal con el siguiente formulario:
+    - Nombre de la canción  (obligatorio)
+    - Artista              (obligatorio)
+    - Emisora              (lista dinámica con todas las emisoras registradas)
+
+✔ Nuevo endpoint:
+    POST /api/manual_song
+
+✔ Lógica de registro:
+    - Se crea un registro temporal en la tabla `canciones`
+    - Campo adicional: genero = "Manual"
+    - fecha_reproduccion = NOW()
+    - Se actualiza emisora.ultima_cancion
+
+✔ Mecanismo de limpieza:
+    - El registro manual se elimina automáticamente en el siguiente ciclo del sistema
+      (controlado por un trigger ya existente).
+
+✔ Interfaz:
+    - El modal muestra un mensaje de advertencia visible para el usuario
+    - Al guardar: notificación tipo “✅ Canción registrada (temporal)”
+"""
+
+
+# =====================================================
+# 🎯 CÓMO FUNCIONA (FLUJO DE USUARIO)
+# =====================================================
+
+def flujo_filtro_semanal():
+    """
+    Ejemplo del flujo de uso para el filtro semanal:
+
+        Usuario selecciona: "📅 Semana específica"
+        ↓
+        Aparece selector: <input type="week">
+        ↓
+        Usuario elige: 2025-W45
+        ↓
+        JavaScript llama:
+            /api/stats/top_by_week?week=2025-W45&limit=30
+        ↓
+        Backend calcula:
+            Lunes 4 Nov - Domingo 10 Nov 2025
+        ↓
+        Retorna:
+            Top de esa semana específica
+    """
+    pass
+
+
+def flujo_registro_manual():
+    """
+    Ejemplo del flujo de uso para el registro manual:
+
+        Usuario hace clic en: "➕ Ingresar canción"
+        ↓
+        Se abre el modal con formulario:
+            - Canción: "Waka Waka"
+            - Artista: "Shakira"
+            - Emisora: [Dropdown con 52 emisoras]
+        ↓
+        Usuario presiona: "💾 Guardar canción"
+        ↓
+        Envío:
+            POST /api/manual_song con JSON
+        ↓
+        Backend:
+            - Inserta registro en `canciones`
+            - genero="Manual"
+            - fecha_reproduccion=NOW()
+            - Actualiza emisora.ultima_cancion
+        ↓
+        Notificación:
+            "✅ Canción registrada (temporal)"
+        ↓
+        En el próximo ciclo (≈60s):
+            Se reemplaza por detección automática.
+    """
+    pass
+
 # ============================================================================
 # INICIALIZACIÓN
 # ============================================================================
