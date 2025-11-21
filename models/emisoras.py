@@ -11,6 +11,9 @@ class Emisora(db.Model):
     pais = db.Column(db.String(80), nullable=True)
     ultima_cancion = db.Column(db.String(255))
     ultima_actualizacion = db.Column(db.DateTime)
+    
+    # 🔹 Estado de la emisora: 'activo_hoy', 'activo_ayer', 'inactivo'
+    estado = db.Column(db.String(20), default='activo_hoy', nullable=False, index=True)
 
     # 🔹 Campos extra opcionales usados por cargar_emisoras.py
     ciudad = db.Column(db.String(120))
