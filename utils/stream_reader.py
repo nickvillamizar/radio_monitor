@@ -1,4 +1,4 @@
-# archivo: utils/stream_reader.py - VERSIÓN PERIODÍSTICA PROFESIONAL 🎯
+# archivo: utils/stream_reader.py - VERSIÓN PERIODÍSTICA PROFESIONAL [OK]
 # NO SE RINDE. GARANTÍA 100% DE DETECCIÓN.
 import os
 import sys
@@ -44,9 +44,17 @@ USER_AGENTS = [
 # ============================================================================
 
 logger = logging.getLogger("stream_reader")
+# Configurar para Windows - usar UTF-8 con fallback a ASCII
+import io
+if sys.platform == 'win32':
+    try:
+        # Intentar usar UTF-8 en Windows
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    except:
+        pass
+
 handler = logging.StreamHandler(sys.stdout)
-formatter = logging.Formatter("[%(asctime)s] %(levelname)s - %(message)s")
-handler.setFormatter(formatter)
+handler.setFormatter(logging.Formatter("[%(asctime)s] %(levelname)s - %(message)s"))
 if not logger.handlers:
     logger.addHandler(handler)
 logger.setLevel(logging.INFO)
@@ -65,20 +73,46 @@ def normalize_string(text: str) -> str:
     return text
 
 
+def clean_stream_title(text: str) -> str:
+    """Limpia prefijos comunes en metadata de streams (ICY)."""
+    if not text:
+        return text
+    
+    text = normalize_string(text)
+    
+    # Prefijos comunes que añaden las radios pero NO son parte de la canción
+    prefixes = [
+        "now on air:",
+        "now playing:",
+        "actualmente:", 
+        "reproduciendo:",
+        "[now playing]",
+        "[on air]",
+        "[streaming]",
+        "[live]",
+        "[en vivo]",
+        "[en directo]",
+        "[MUSIC] ",
+        "[PLAY] ",
+        "playing: ",
+    ]
+    
+    text_lower = text.lower()
+    
+    for prefix in prefixes:
+        if text_lower.startswith(prefix):
+            text = text[len(prefix):].strip()
+            text_lower = text.lower()
+    
+    return text
+
+
 def is_valid_metadata(text: str) -> bool:
-    """Valida metadata ESTRICTAMENTE."""
+    """Valida metadata ESTRICTAMENTE - rechaza genéricos y falsos positivos."""
     if not text:
         return False
     
     text = normalize_string(text)
-    
-    # Rechazar strings obviamente inválidos
-    invalid = [
-        "-", "–", "—", ".", "*", "...", "---", "n/a", "na",
-        "unknown", "desconocido", "live", "en vivo", "live stream",
-        "radio", "stream", "streaming", "sin título", "no title",
-        "untitled", "loading", "buffering", "connecting"
-    ]
     
     if len(text) < 3:
         return False
@@ -87,11 +121,44 @@ def is_valid_metadata(text: str) -> bool:
         return False
     
     text_lower = text.lower().strip()
-    if text_lower in invalid:
+    
+    # Rechazar strings obviamente inválidos (exacta)
+    invalid_exact = [
+        "-", "–", "—", ".", "*", "...", "---", "n/a", "na",
+        "unknown", "desconocido", "live", "en vivo", "live stream",
+        "radio", "stream", "streaming", "sin título", "no title",
+        "untitled", "loading", "buffering", "connecting",
+        "transmisión", "transmision", "transmisión en vivo",
+        "en directo", "en vivo", 
+        "not available", "no disponible", "no info",
+    ]
+    
+    if text_lower in invalid_exact:
+        return False
+    
+    # Casos específicos: si contiene EXACTAMENTE "Desconocido - Transmisión en Vivo"
+    if text_lower == "desconocido - transmisión en vivo" or text_lower == "desconocido - transmision en vivo":
+        return False
+    
+    # Si contiene "desconocido" solo (no es válido)
+    if text_lower.startswith("desconocido") and " - " in text_lower:
+        return False
+    
+    # Si contiene "escuchando" como palabra principal, probable falso
+    if text_lower.startswith("estás escuchando") or text_lower.startswith("estas escuchando"):
+        return False
+    
+    # Si es solo "[EN VIVO] - ..." es falso
+    if text.startswith("-") or text.startswith("- "):
         return False
     
     # Rechazar si es solo números
     if text.replace(" ", "").isdigit():
+        return False
+    
+    # Requiere al menos una palabra de 3+ caracteres
+    words = text.split()
+    if not any(len(w) >= 3 for w in words):
         return False
     
     return True
@@ -147,7 +214,7 @@ def extract_zeno_stream(url: str) -> Optional[str]:
                 try:
                     resp = requests.head(url, timeout=8, allow_redirects=True)
                     if resp.status_code == 200:
-                        logger.info(f"✓ Stream Zeno válido: {url}")
+                        logger.info(f"[OK] Stream Zeno valido: {url}")
                         return url
                 except:
                     time.sleep(1)
@@ -183,7 +250,7 @@ def extract_zeno_stream(url: str) -> Optional[str]:
                         try:
                             test_resp = requests.head(stream_url, timeout=8)
                             if test_resp.status_code == 200:
-                                logger.info(f"✓ Stream Zeno extraído: {stream_url}")
+                                logger.info(f"[OK] Stream Zeno extraido: {stream_url}")
                                 return stream_url
                         except:
                             pass
@@ -199,7 +266,7 @@ def extract_zeno_stream(url: str) -> Optional[str]:
                     try:
                         resp = requests.head(test_url, timeout=8)
                         if resp.status_code == 200:
-                            logger.info(f"✓ Stream Zeno por path: {test_url}")
+                            logger.info(f"[OK] Stream Zeno por path: {test_url}")
                             return test_url
                     except:
                         continue
@@ -249,7 +316,7 @@ def extract_radionet_stream(url: str) -> Optional[str]:
                     try:
                         resp = requests.head(test_url, timeout=10, allow_redirects=True)
                         if resp.status_code == 200:
-                            logger.info(f"✓ Stream Radio.net: {test_url}")
+                            logger.info(f"[OK] Stream Radio.net: {test_url}")
                             return test_url
                     except:
                         time.sleep(0.5)
@@ -272,7 +339,7 @@ def extract_radionet_stream(url: str) -> Optional[str]:
                     try:
                         test_resp = requests.head(potential_url, timeout=8)
                         if test_resp.status_code == 200:
-                            logger.info(f"✓ Stream Radio.net HTML: {potential_url}")
+                            logger.info(f"[OK] Stream Radio.net HTML: {potential_url}")
                             return potential_url
                     except:
                         continue
@@ -332,7 +399,7 @@ def extract_generic_stream(page_url: str) -> Optional[str]:
             try:
                 test_resp = requests.head(potential_url, timeout=8, allow_redirects=True)
                 if test_resp.status_code == 200:
-                    logger.info(f"✓ Stream genérico: {potential_url}")
+                    logger.info(f"[OK] Stream generico: {potential_url}")
                     return potential_url
             except:
                 continue
@@ -378,7 +445,7 @@ def get_real_stream_url(url: str) -> str:
     real_url = None
     
     if "zeno.fm" in domain:
-        logger.info("🔧 Detectado Zeno.FM")
+        logger.info("[WRENCH] Detectado Zeno.FM")
         for attempt in range(3):
             real_url = extract_zeno_stream(url)
             if real_url:
@@ -387,7 +454,7 @@ def get_real_stream_url(url: str) -> str:
             time.sleep(2)
     
     elif "radio.net" in domain:
-        logger.info("🔧 Detectado Radio.net")
+        logger.info("[WRENCH] Detectado Radio.net")
         for attempt in range(3):
             real_url = extract_radionet_stream(url)
             if real_url:
@@ -396,7 +463,7 @@ def get_real_stream_url(url: str) -> str:
             time.sleep(2)
     
     elif any(plat in domain for plat in ["tunein", "streema", "live365", "shoutcast"]):
-        logger.info(f"🔧 Detectada plataforma: {domain}")
+        logger.info(f"[WRENCH] Detectada plataforma: {domain}")
         for attempt in range(3):
             real_url = extract_generic_stream(url)
             if real_url:
@@ -409,9 +476,9 @@ def get_real_stream_url(url: str) -> str:
     STREAM_URL_CACHE[url] = final_url
     
     if real_url:
-        logger.info(f"✓ Stream extraído exitosamente")
+        logger.info(f"[OK] Stream extraido exitosamente")
     else:
-        logger.warning(f"⚠️  Usando URL original (puede funcionar)")
+        logger.warning(f"[WARN]  Usando URL original (puede funcionar)")
     
     return final_url
 
@@ -421,12 +488,13 @@ def get_real_stream_url(url: str) -> str:
 # ============================================================================
 
 def get_icy_metadata(stream_url: str, timeout: int = 15) -> Optional[str]:
-    """Lee metadata ICY con MÁXIMA PERSISTENCIA."""
+    """Lee metadata ICY con MÁXIMA PERSISTENCIA - tolerante con variaciones."""
     headers_variants = [
         {"Icy-MetaData": "1", "User-Agent": get_random_user_agent()},
         {"Icy-Metadata": "1", "User-Agent": get_random_user_agent()},
         {"icy-metadata": "1", "User-Agent": "VLC/3.0.0"},
         {"Icy-MetaData": "1", "User-Agent": "WinampMPEG/5.0"},
+        {"User-Agent": "Mozilla/5.0"},  # Sin header ICY - algunos servidores lo rechazan
     ]
     
     for attempt in range(MAX_RETRIES_ICY):
@@ -440,7 +508,17 @@ def get_icy_metadata(stream_url: str, timeout: int = 15) -> Optional[str]:
                 timeout=timeout
             )
             
-            # Verificar si hay metadata
+            # Intentar obtener metadata de HTTP headers primero
+            for header_key in ['icy-title', 'Title', 'X-StreamTitle']:
+                if header_key.lower() in {k.lower(): k for k in resp.headers.keys()}:
+                    actual_key = {k.lower(): k for k in resp.headers.keys()}[header_key.lower()]
+                    title = resp.headers[actual_key]
+                    if title and is_valid_metadata(title):
+                        logger.info(f"   [OK] Metadata desde header HTTP: {title[:60]}")
+                        resp.close()
+                        return normalize_string(title)
+            
+            # Buscar metaint para ICY metadata
             metaint_key = None
             for key in resp.headers:
                 if 'metaint' in key.lower():
@@ -449,12 +527,9 @@ def get_icy_metadata(stream_url: str, timeout: int = 15) -> Optional[str]:
             
             if not metaint_key:
                 if attempt < MAX_RETRIES_ICY - 1:
-                    logger.debug(f"   ICY intento {attempt + 1}/{MAX_RETRIES_ICY}: sin metaint")
-                    resp.close()
                     time.sleep(RETRY_DELAY)
-                    continue
                 resp.close()
-                return None
+                continue
             
             metaint = int(resp.headers[metaint_key])
             raw = resp.raw
@@ -475,32 +550,48 @@ def get_icy_metadata(stream_url: str, timeout: int = 15) -> Optional[str]:
             if meta_len == 0:
                 resp.close()
                 if attempt < MAX_RETRIES_ICY - 1:
-                    logger.debug(f"   ICY intento {attempt + 1}/{MAX_RETRIES_ICY}: metadata vacía")
                     time.sleep(RETRY_DELAY)
                 continue
-                return None
             
             # Leer metadata
             meta = raw.read(meta_len)
             resp.close()
             
-            # Extraer título
-            if b"StreamTitle='" in meta or b"TITLE='" in meta:
-                for prefix in [b"StreamTitle='", b"TITLE='"]:
-                    if prefix in meta:
-                        title_part = meta.split(prefix)[1].split(b"';")[0]
-                        title = title_part.decode("utf-8", errors="ignore").strip()
-                        
-                        if is_valid_metadata(title):
-                            logger.info(f"   ✓ ICY metadata válida obtenida")
-                            return normalize_string(title)
+            # Extraer título - tolerante con múltiples prefijos
+            title = None
+            for prefix in [b"StreamTitle='", b"TITLE='" , b"Title='", b"StreamTitle=\"", b"StreamTitle="]:
+                if prefix in meta:
+                    try:
+                        title_part = meta.split(prefix, 1)[1]
+                        # Buscar fin de valor (quote, semicolon, newline)
+                        for end_marker in [b"';", b"';", b'"', b'\n', b'\0']:
+                            if end_marker in title_part:
+                                title = title_part.split(end_marker)[0].decode("utf-8", errors="ignore").strip()
+                                break
+                        if not title:
+                            title = title_part[:200].decode("utf-8", errors="ignore").strip()
+                        if title:
+                            break
+                    except:
+                        pass
             
-            # Si llegamos aquí, metadata no válida, reintentar
+            if title:
+                # Limpiar prefijos comunes
+                title_clean = clean_stream_title(title)
+                
+                if is_valid_metadata(title_clean):
+                    logger.info(f"   [OK] Metadata ICY válida obtenida: {title_clean[:60]}")
+                    return normalize_string(title_clean)
+                else:
+                    logger.debug(f"   [DEBUG] Título ICY rechazado: '{title}' (limpio: '{title_clean}')")
+            
+            # Si llegamos aquí, reintentar
             if attempt < MAX_RETRIES_ICY - 1:
-                logger.debug(f"   ICY intento {attempt + 1}/{MAX_RETRIES_ICY}: metadata inválida")
                 time.sleep(RETRY_DELAY)
             
         except Exception as e:
+            if attempt < MAX_RETRIES_ICY - 1:
+                time.sleep(RETRY_DELAY)
             if attempt < MAX_RETRIES_ICY - 1:
                 logger.debug(f"   ICY intento {attempt + 1}/{MAX_RETRIES_ICY}: {str(e)[:50]}")
                 time.sleep(RETRY_DELAY)
@@ -592,7 +683,7 @@ def capture_and_recognize_audd(stream_url: str, audd_token: str) -> Optional[Dic
                             if "genreNames" in apple_data and apple_data["genreNames"]:
                                 genre = apple_data["genreNames"][0]
                         
-                        logger.info(f"   ✓ AudD reconoció exitosamente")
+                        logger.info(f"   [OK] AudD reconocio exitosamente")
                         return {
                             "artist": artist,
                             "title": title,
@@ -705,7 +796,7 @@ def is_recent_duplicate(db, Cancion, emisora_id: int, artista: str, titulo: str,
 
 def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
     """
-    🎯 VERSIÓN PERIODÍSTICA PROFESIONAL
+    [OK] VERSIÓN PERIODÍSTICA PROFESIONAL
     NO SE RINDE. GARANTÍA 100% DE REGISTRO.
     """
     try:
@@ -716,7 +807,7 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
         app = current_app._get_current_object()
         
         logger.info("=" * 70)
-        logger.info("🎯 SISTEMA PERIODÍSTICO PROFESIONAL - INICIANDO")
+        logger.info("[OK] SISTEMA PERIODÍSTICO PROFESIONAL - INICIANDO")
         logger.info("=" * 70)
         
         audd_token = app.config.get("AUDD_API_TOKEN", "")
@@ -724,10 +815,10 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
         emisoras = Emisora.query.all()
         
         if not emisoras:
-            logger.warning("⚠️  Sin emisoras en BD")
+            logger.warning("[WARN]  Sin emisoras en BD")
             return
         
-        logger.info(f"📻 {len(emisoras)} emisoras a procesar\n")
+        logger.info(f"[RADIO] {len(emisoras)} emisoras a procesar\n")
         
         stats = {
             "processed": 0,
@@ -741,51 +832,61 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
         
         for idx, e in enumerate(emisoras, 1):
             try:
-                logger.info(f"{'═' * 70}")
-                logger.info(f"📡 [{idx}/{len(emisoras)}] {e.nombre} (ID: {e.id})")
-                logger.info(f"{'─' * 70}")
+                logger.info(f"{'=' * 70}")
+                logger.info(f"[SIGNAL] [{idx}/{len(emisoras)}] {e.nombre} (ID: {e.id})")
+                logger.info(f"{'-' * 70}")
                 
                 url = getattr(e, "url_stream", None) or getattr(e, "url", None)
                 
                 if not url:
-                    logger.error(f"❌ Sin URL - OMITIENDO")
+                    logger.error(f"[ERROR] Sin URL - OMITIENDO")
                     stats["errors"] += 1
                     continue
                 
                 # OBTENER STREAM REAL
-                logger.info(f"🔍 Obteniendo stream real...")
+                logger.info(f"[CHECK] Obteniendo stream real...")
                 stream_url = get_real_stream_url(url)
                 logger.info(f"   URL final: {stream_url[:80]}...")
                 
                 detected_info = None
                 
                 # PASO 1: ICY METADATA (5 INTENTOS)
-                logger.info(f"🎵 Intentando ICY metadata ({MAX_RETRIES_ICY} intentos)...")
+                logger.info(f"[MUSIC] Intentando ICY metadata ({MAX_RETRIES_ICY} intentos)...")
                 icy_title = get_icy_metadata(stream_url, timeout=ICY_TIMEOUT)
                 
-                if icy_title and is_valid_metadata(icy_title):
-                    artista, titulo = parse_title_artist(icy_title)
-                    
-                    if is_valid_metadata(artista) and is_valid_metadata(titulo):
-                        detected_info = {
-                            "artist": artista,
-                            "title": titulo,
-                            "genre": None
-                        }
-                        stats["icy_success"] += 1
-                        logger.info(f"✅ ICY EXITOSO: {artista} - {titulo}")
+                if icy_title:
+                    logger.info(f"   [RAW] Obtenido: {icy_title[:100]}")
+                    if is_valid_metadata(icy_title):
+                        artista, titulo = parse_title_artist(icy_title)
+                        
+                        if is_valid_metadata(artista) and is_valid_metadata(titulo):
+                            detected_info = {
+                                "artist": artista,
+                                "title": titulo,
+                                "genre": None
+                            }
+                            stats["icy_success"] += 1
+                            logger.info(f"[SUCCESS] ICY EXITOSO: {artista} - {titulo}")
+                        else:
+                            logger.info(f"   [REJECT] Artista o titulo inválido: '{artista}' - '{titulo}'")
+                    else:
+                        logger.info(f"   [REJECT] ICY metadata rechazada por validación (genérica/falsa)")
+                else:
+                    logger.info(f"   [FAIL] No se obtuvo ICY metadata (timeout o sin metadata)")
                 
                 # PASO 2: RECONOCIMIENTO POR AUDIO (3 INTENTOS)
                 if not detected_info and fallback_to_audd and audd_token:
-                    logger.info(f"🎤 Intentando reconocimiento por audio ({MAX_RETRIES_AUDD} intentos)...")
+                    logger.info(f"[AUDIO] Fallback: Intentando reconocimiento por audio ({MAX_RETRIES_AUDD} intentos)...")
                     audd_result = capture_and_recognize_audd(stream_url, audd_token)
                     
                     if audd_result:
                         detected_info = audd_result
                         stats["audd_success"] += 1
-                        logger.info(f"✅ AUDD EXITOSO: {audd_result['artist']} - {audd_result['title']}")
+                        logger.info(f"[SUCCESS] AUDD EXITOSO: {audd_result['artist']} - {audd_result['title']}")
                         if audd_result.get("genre") and audd_result["genre"] != "Desconocido":
-                            logger.info(f"   🎸 Género detectado: {audd_result['genre']}")
+                            logger.info(f"   [GENRE] Género detectado: {audd_result['genre']}")
+                    else:
+                        logger.info(f"   [FAIL] AudD no pudo detectar canción")
                 
                 # PASO 3: OBTENER GÉNERO SI FALTA
                 if detected_info and not detected_info.get("genre"):
@@ -796,16 +897,16 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
                     cached_genre = get_genre_from_cache(artist)
                     if cached_genre:
                         detected_info["genre"] = cached_genre
-                        logger.info(f"   🎸 Género (caché): {cached_genre}")
+                        logger.info(f"   [GENRE] Género (caché): {cached_genre}")
                     else:
                         # MusicBrainz
-                        logger.info(f"🔎 Consultando género en MusicBrainz...")
+                        logger.info(f"[CHECK] Consultando género en MusicBrainz...")
                         mb_genre = get_genre_musicbrainz(artist, title)
                         if mb_genre:
                             detected_info["genre"] = mb_genre
                             save_genre_to_cache(artist, mb_genre)
                             stats["mb_genre"] += 1
-                            logger.info(f"   ✅ Género: {mb_genre}")
+                            logger.info(f"   [SUCCESS] Género: {mb_genre}")
                         else:
                             detected_info["genre"] = "Desconocido"
                 
@@ -816,7 +917,7 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
                         "title": "Transmisión en Vivo",
                         "genre": "Desconocido"
                     }
-                    logger.warning(f"⚠️  FALLBACK: Sin detección automática")
+                    logger.warning(f"[WARN]  FALLBACK: Sin detección automática")
                 
                 # PASO 5: VERIFICAR DUPLICADO
                 artista = detected_info["artist"]
@@ -824,7 +925,7 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
                 genero = detected_info.get("genre", "Desconocido")
                 
                 if is_recent_duplicate(db, Cancion, e.id, artista, titulo, dedupe_seconds):
-                    logger.info(f"⏭️  DUPLICADO RECIENTE - Omitiendo")
+                    logger.info(f"[SKIP]  DUPLICADO RECIENTE - Omitiendo")
                     stats["duplicates"] += 1
                     e.ultima_actualizacion = datetime.now()
                     db.session.commit()
@@ -832,7 +933,7 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
                     continue
                 
                 # PASO 6: GUARDAR EN BASE DE DATOS
-                logger.info(f"💾 GUARDANDO EN BD...")
+                logger.info(f"[SAVE] GUARDANDO EN BD...")
                 logger.info(f"   Artista: {artista}")
                 logger.info(f"   Título:  {titulo}")
                 logger.info(f"   Género:  {genero}")
@@ -851,12 +952,12 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
                 db.session.commit()
                 
                 stats["registered"] += 1
-                logger.info(f"✅ ✅ ✅ REGISTRADO EXITOSAMENTE ✅ ✅ ✅")
+                logger.info(f"[SUCCESS] [SUCCESS] [SUCCESS] REGISTRADO EXITOSAMENTE [SUCCESS] [SUCCESS] [SUCCESS]")
                 
                 stats["processed"] += 1
                 
             except Exception as exc:
-                logger.error(f"❌ ERROR PROCESANDO {e.nombre}: {exc}")
+                logger.error(f"[ERROR] ERROR PROCESANDO {e.nombre}: {exc}")
                 import traceback
                 traceback.print_exc()
                 stats["errors"] += 1
@@ -866,23 +967,23 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
                     pass
         
         # ESTADÍSTICAS FINALES
-        logger.info(f"\n{'═' * 70}")
-        logger.info(f"🎯 CICLO COMPLETADO - REPORTE FINAL")
-        logger.info(f"{'═' * 70}")
+        logger.info(f"\n{'=' * 70}")
+        logger.info(f"[OK] CICLO COMPLETADO - REPORTE FINAL")
+        logger.info(f"{'=' * 70}")
         logger.info(f"📊 Total procesadas:    {stats['processed']}/{len(emisoras)}")
-        logger.info(f"✅ Registradas:         {stats['registered']}")
-        logger.info(f"🎵 Éxitos ICY:          {stats['icy_success']}")
-        logger.info(f"🎤 Éxitos AudD:         {stats['audd_success']}")
-        logger.info(f"🎸 Géneros MusicBrainz: {stats['mb_genre']}")
-        logger.info(f"⏭️  Duplicados:          {stats['duplicates']}")
-        logger.info(f"❌ Errores:             {stats['errors']}")
-        logger.info(f"{'─' * 70}")
+        logger.info(f"[SUCCESS] Registradas:         {stats['registered']}")
+        logger.info(f"[MUSIC] Éxitos ICY:          {stats['icy_success']}")
+        logger.info(f"[AUDIO] Éxitos AudD:         {stats['audd_success']}")
+        logger.info(f"[GENRE] Géneros MusicBrainz: {stats['mb_genre']}")
+        logger.info(f"[SKIP]  Duplicados:          {stats['duplicates']}")
+        logger.info(f"[ERROR] Errores:             {stats['errors']}")
+        logger.info(f"{'-' * 70}")
         if stats['processed'] > 0:
             success_rate = (stats['registered'] / stats['processed']) * 100
-            logger.info(f"🎯 TASA DE ÉXITO: {success_rate:.1f}%")
-        logger.info(f"{'═' * 70}\n")
+            logger.info(f"[OK] TASA DE ÉXITO: {success_rate:.1f}%")
+        logger.info(f"{'=' * 70}\n")
         
     except Exception as exc:
-        logger.error(f"❌ ERROR CRÍTICO EN SISTEMA: {exc}")
+        logger.error(f"[ERROR] ERROR CRÍTICO EN SISTEMA: {exc}")
         import traceback
         traceback.print_exc()

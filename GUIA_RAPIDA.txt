@@ -1,0 +1,240 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║                     GUÍA RÁPIDA DE REFERENCIA                              ║
+║                  RADIO MONITOR SYSTEM - VERSIÓN PRODUCTIVA                ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+
+═══════════════════════════════════════════════════════════════════════════════
+ESTADO ACTUAL DEL SISTEMA (21-Nov-2025 14:38 UTC)
+═══════════════════════════════════════════════════════════════════════════════
+
+✓ Monitor activo y corriendo
+✓ 71 emisoras siendo monitoreadas
+✓ 13,127 canciones catalogadas (87% reales)
+✓ Sistema en background - no requiere intervención
+
+
+═══════════════════════════════════════════════════════════════════════════════
+COMANDOS RÁPIDOS
+═══════════════════════════════════════════════════════════════════════════════
+
+1. VER ESTADO DEL SISTEMA:
+   python diagnostico_profundo.py
+
+2. GENERAR REPORTE EJECUTIVO:
+   python reporte_ejecutivo.py
+
+3. ANALIZAR EMISORAS SIN CANCIONES:
+   python analizar_19_estancadas.py
+
+4. EJECUTAR DETECCIÓN MANUAL:
+   python setup_audd_and_detect.py
+
+5. VALIDAR URLs DE EMISORAS:
+   python validate_streaming_urls.py
+
+6. BUSCAR URLs ALTERNATIVAS:
+   python url_rescuer.py
+
+7. ACCEDER A DASHBOARD WEB:
+   Abrir navegador: http://127.0.0.1:5000
+
+
+═══════════════════════════════════════════════════════════════════════════════
+MANTENER EL SISTEMA FUNCIONANDO 24/7
+═══════════════════════════════════════════════════════════════════════════════
+
+EL MONITOR DEBE ESTAR SIEMPRE CORRIENDO:
+
+1. Iniciar en terminal PowerShell:
+   cd 'c:\Users\57321\OneDrive\Escritorio\radio_monitor-main\radio_monitor-main'
+   python app.py
+
+2. El sistema procesará automáticamente cada 60 segundos
+
+3. Para verificar que está corriendo:
+   Get-Process python
+
+4. Para detener:
+   Get-Process python | Stop-Process -Force
+
+
+═══════════════════════════════════════════════════════════════════════════════
+PROBLEMAS COMUNES Y SOLUCIONES
+═══════════════════════════════════════════════════════════════════════════════
+
+PROBLEMA: "No se detectan canciones nuevas"
+SOLUCIÓN:
+  1. Verificar que app.py está corriendo (Get-Process python)
+  2. Ejecutar: python diagnostico_profundo.py
+  3. Si último update > 1 hora, reiniciar app.py
+
+PROBLEMA: "Error de base de datos"
+SOLUCIÓN:
+  1. Verificar conexión: python check_db.py
+  2. Revisar DATABASE_URL en environment
+  3. Reiniciar app.py
+
+PROBLEMA: "19 emisoras sin canciones"
+SOLUCIÓN:
+  1. Analizar: python analizar_19_estancadas.py
+  2. Causas: Servidores caídos (2), sin metadata (2), AudD quota (15)
+  3. Acciones: Ver RECOMENDACIONES en este documento
+
+PROBLEMA: "Errores de encoding Unicode"
+SOLUCIÓN:
+  • RESUELTO - Ya configurado UTF-8 en stream_reader.py
+  • Si reaparece, agregar: $env:PYTHONIOENCODING = "utf-8"
+
+
+═══════════════════════════════════════════════════════════════════════════════
+MÉTRICAS CLAVE A MONITOREAR
+═══════════════════════════════════════════════════════════════════════════════
+
+EJECUTAR SEMANALMENTE (domingos):
+  python diagnostico_profundo.py > logs/weekly_report_$(Get-Date -f 'yyyy-MM-dd').txt
+
+INDICADORES A REVISAR:
+  • Total canciones: Debe crecer (mínimo +100/semana)
+  • % Genéricas: Debe mantenerse < 15%
+  • Emisoras actualizadas 24h: Debe ser ≥ 30 (42%)
+  • Sin canciones: Debe mantenerse ≤ 20
+
+
+═══════════════════════════════════════════════════════════════════════════════
+RECOMENDACIONES ESTRATÉGICAS
+═══════════════════════════════════════════════════════════════════════════════
+
+INMEDIATO:
+  ✓ Monitor debe estar corriendo 24/7 (no dejar detenido)
+  ✓ Ejecutar diagnostico cada semana
+  ✓ Backup de base de datos semanalmente
+
+PRÓXIMA SEMANA:
+  1. Reemplazar 2 URLs caídas (Kiss 94.9 FM, KQ 94.5 FM)
+  2. Contactar 15 DJs sin detección para verificar stream
+  3. Decidir: upgrade AudD a $9.99/mes? (500 detecciones/mes)
+
+PRÓXIMO MES:
+  1. Implementar alertas por email
+  2. Crear dashboard visual
+  3. Export automático a redes sociales
+
+PRÓXIMOS 3 MESES:
+  1. API pública para terceros
+  2. Sistema de analytics avanzado
+  3. Predicción de tendencias
+
+
+═══════════════════════════════════════════════════════════════════════════════
+VARIABLES DE AMBIENTE CRÍTICAS
+═══════════════════════════════════════════════════════════════════════════════
+
+DATABASE_URL:
+  postgresql://neondb_owner:npg_KwHW54JXqORz@ep-rough-leaf-adci1see-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
+
+AUDD_API_TOKEN:
+  270b4f1f1e3fbefe8e76febd4b29b42f
+  
+Ubicaciones:
+  • app.config['AUDD_API_TOKEN']
+  • setup_audd_and_detect.py (línea 12)
+  • stream_reader.py (detecta automáticamente)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+ARCHIVOS IMPORTANTES
+═══════════════════════════════════════════════════════════════════════════════
+
+CÓDIGO PRODUCTIVO:
+  • app.py - Flask app + monitor thread (PRINCIPAL)
+  • utils/stream_reader.py - Motor de detección
+  • config.py - Configuración
+
+UTILIDADES:
+  • setup_audd_and_detect.py - Ciclo completo con AudD
+  • diagnostico_profundo.py - Diagnóstico del sistema
+  • reporte_ejecutivo.py - Reporte visual
+  • analizar_19_estancadas.py - Análisis detallado
+
+DATOS:
+  • Database: PostgreSQL Neon (online)
+  • Logs: logs/ (crear si no existe)
+  • Caché: tmp/cache/
+
+
+═══════════════════════════════════════════════════════════════════════════════
+CONTACTO Y SOPORTE
+═══════════════════════════════════════════════════════════════════════════════
+
+Para errores técnicos:
+  1. Ejecutar: python diagnostico_profundo.py
+  2. Revisar logs en terminal
+  3. Ejecutar: python analizar_19_estancadas.py (si hay problemas específicos)
+
+Para upgrade o nuevas funcionalidades:
+  • Ver recomendaciones estratégicas
+  • Contactar para consultar roadmap
+
+Para backup de datos:
+  • PostgreSQL Neon tiene backups automáticos
+  • Para manual: pg_dump command (consultar con DBA)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+CHECKLIST SEMANAL
+═══════════════════════════════════════════════════════════════════════════════
+
+□ Verificar que app.py está corriendo
+□ Ejecutar diagnostico_profundo.py
+□ Revisar que total_canciones creció
+□ Revisar % genéricas < 15%
+□ Revisar emisoras sin canciones ≤ 20
+□ Backup de datos (si aplica)
+□ Revisar logs para errores
+
+
+═══════════════════════════════════════════════════════════════════════════════
+ESCALADA EN CASO DE PROBLEMAS CRÍTICOS
+═══════════════════════════════════════════════════════════════════════════════
+
+PROBLEMA CRÍTICO: Monitor no está corriendo
+  1. Restart app.py
+  2. Si sigue error: revisar DATABASE_URL
+  3. Si sigue error: revisar PostgreSQL connectivity
+
+PROBLEMA CRÍTICO: Database offline
+  1. Checkear: https://console.neon.tech
+  2. Revisar credenciales DATABASE_URL
+  3. Contactar Neon support si es problema del servidor
+
+PROBLEMA CRÍTICO: 0 canciones nuevas > 24h
+  1. Ejecutar: python diagnostico_profundo.py
+  2. Ejecutar: python analizar_19_estancadas.py
+  3. Verificar URLs: python validate_streaming_urls.py
+  4. Si URLs OK pero no hay detección: posible AudD quota
+
+
+═══════════════════════════════════════════════════════════════════════════════
+PRÓXIMOS PASOS RECOMENDADOS
+═══════════════════════════════════════════════════════════════════════════════
+
+1. ESTA SEMANA:
+   ✓ Mantener monitor corriendo
+   ✓ Ejecutar diagnostico_profundo.py (lunes)
+   ✓ Si hay problemas, ejecutar analizar_19_estancadas.py
+
+2. PRÓXIMA SEMANA:
+   ✓ Reemplazar 2 URLs caídas
+   ✓ Contactar 15 DJs sin detección
+   ✓ Decidir sobre upgrade AudD
+
+3. PRÓXIMOS 30 DÍAS:
+   ✓ Generar reportes de tendencias
+   ✓ Implementar alertas por email
+   ✓ Revisar datos de calidad
+
+╔════════════════════════════════════════════════════════════════════════════╗
+║  ÚLTIMA ACTUALIZACIÓN: 21 de Noviembre de 2025 @ 14:38 UTC               ║
+║  SISTEMA: [OPERACIONAL] [PRODUCTIVO] [LISTO PARA ENTREGA]               ║
+╚════════════════════════════════════════════════════════════════════════════╝

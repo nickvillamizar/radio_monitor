@@ -6,8 +6,11 @@ from urllib.parse import quote_plus, unquote_plus
 import os
 import mimetypes
 import re
+import logging
 
 from flask import Flask, render_template, jsonify, request, abort, send_file
+from flask.cli import with_appcontext
+import click
 from sqlalchemy import func, desc, or_
 
 from config import Config
@@ -31,6 +34,15 @@ db.init_app(app)
 # Registrar rutas de API
 from routes.emisoras_api import emisoras_api
 app.register_blueprint(emisoras_api)
+
+# Importar validador de streams (después de crear app)
+try:
+    from utils.stream_validator import validator
+    HAS_VALIDATOR = True
+except Exception as e:
+    app.logger.warning(f"⚠️  Stream validator no disponible: {e}")
+    HAS_VALIDATOR = False
+    validator = None
 
 # Sistema de imágenes (opcional)
 try:
@@ -970,6 +982,125 @@ def normalize_countries_command():
         print(f"\n❌ Error: {e}")
 
 
+# ============================================================================
+# COMANDO DE DIAGNÓSTICO DE EMISORAS (NUEVO)
+# ============================================================================
+
+# ============================================================================
+# COMANDO DE DIAGNÓSTICO DE EMISORAS (NUEVO)
+# ============================================================================
+
+@app.cli.command("validate-streams")
+@click.option('--emisora-id', type=int, default=None, help='ID de emisora específica')
+@click.option('--verbose', is_flag=True, help='Mostrar detalles')
+def validate_streams_command(emisora_id=None, verbose=False):
+    """
+    Comando CLI para validar URLs de streaming de emisoras.
+    
+    Uso:
+      flask validate-streams              # Valida todas
+      flask validate-streams --emisora-id 5
+      flask validate-streams --verbose    # Con detalles
+    """
+    if not HAS_VALIDATOR:
+        print("[ERROR] El validador de streams no esta disponible")
+        return
+    
+    print("[*] Iniciando validacion de URLs de streaming...\n")
+    
+    try:
+        if emisora_id:
+            emisoras = [Emisora.query.get_or_404(emisora_id)]
+        else:
+            emisoras = Emisora.query.order_by(Emisora.nombre).all()
+        
+        print(f"[RADIO] Validando {len(emisoras)} emisora(s)...\n")
+        
+        # Validar
+        results = validator.validate_multiple(emisoras, verbose=verbose)
+        
+        # Actualizar base de datos
+        for emisora_id, result in results.items():
+            emisora = Emisora.query.get(emisora_id)
+            if emisora:
+                emisora.url_valida = result['valid']
+                emisora.es_stream_activo = result['is_streaming_server']
+                emisora.ultima_validacion = datetime.now()
+                emisora.diagnostico = result['diagnosis']
+        
+        db.session.commit()
+        
+        # Generar reporte
+        report = validator.generate_report(emisoras, results)
+        print("\n" + report)
+        
+        # Guardar en archivo
+        report_file = os.path.join(os.getcwd(), "tmp", f"diagnostico_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
+        os.makedirs(os.path.dirname(report_file), exist_ok=True)
+        with open(report_file, 'w', encoding='utf-8') as f:
+            f.write(report)
+        
+        print(f"\n📄 Reporte guardado: {report_file}")
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"\n❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+@app.cli.command("get-failing-stations")
+def get_failing_stations_command():
+    """
+    Comando CLI para listar emisoras con pocas metricas/plays.
+    Util para identificar emisoras problematicas.
+    
+    Uso: flask get-failing-stations
+    """
+    print("[*] Analizando emisoras con pocas metricas...\n")
+    
+    try:
+        # Contar plays por emisora
+        plays_per_station = (
+            db.session.query(
+                Emisora.id,
+                Emisora.nombre,
+                Emisora.url_stream,
+                func.coalesce(func.count(Cancion.id), 0).label("plays"),
+            )
+            .outerjoin(Cancion, Cancion.emisora_id == Emisora.id)
+            .group_by(Emisora.id, Emisora.nombre, Emisora.url_stream)
+            .order_by(func.coalesce(func.count(Cancion.id), 0))
+            .all()
+        )
+        
+        print("[RADIO] EMISORAS CON POCAS METRICAS (0-2 plays)")
+        print("=" * 80)
+        
+        problematic = [s for s in plays_per_station if s.plays <= 2]
+        
+        if not problematic:
+            print("[OK] Todas las emisoras tienen metricas normales\n")
+            return
+        
+        print(f"[!] Se encontraron {len(problematic)} emisoras problematicas:\n")
+        
+        for i, station in enumerate(problematic, 1):
+            status = "[X]" if station.plays == 0 else "[!]"
+            print(f"{i:2}. {status} {station.nombre} ({station.plays} plays)")
+            print(f"    URL: {station.url_stream}")
+            print()
+        
+        print("=" * 80)
+        print(f"\nTotal problematicas: {len(problematic)}/{len(plays_per_station)}")
+        print("\n[TIP] Recomendacion: Ejecute 'flask validate-streams' para diagnosticar URLs\n")
+        
+    except Exception as e:
+        print(f"[ERROR] {e}")
+        import traceback
+        traceback.print_exc()
+
+
 
 
 
@@ -1116,6 +1247,192 @@ def api_manual_song():
         import traceback
         traceback.print_exc()
         return jsonify({"error": f"Error interno: {str(e)}"}), 500
+
+
+# ============================================================================
+# ENDPOINTS DE VALIDACIÓN DE STREAMS (NUEVO)
+# ============================================================================
+
+@app.route("/api/validate/stream/<int:emisora_id>")
+def api_validate_stream(emisora_id):
+    """
+    Valida la URL de streaming de una emisora específica.
+    
+    Returns:
+        {
+            'emisora_id': int,
+            'emisora_nombre': str,
+            'url': str,
+            'valid': bool,
+            'diagnosis': str,
+            'details': {...}
+        }
+    """
+    if not HAS_VALIDATOR:
+        return jsonify({"error": "Validador no disponible"}), 503
+    
+    try:
+        emisora = Emisora.query.get_or_404(emisora_id)
+        
+        # Validar URL
+        result = validator.validate_url(emisora.url_stream, verbose=False)
+        
+        # Actualizar emisora con resultado
+        emisora.url_valida = result['valid']
+        emisora.es_stream_activo = result['is_streaming_server']
+        emisora.ultima_validacion = datetime.now()
+        emisora.diagnostico = result['diagnosis']
+        db.session.commit()
+        
+        return jsonify({
+            'emisora_id': emisora_id,
+            'emisora_nombre': emisora.nombre,
+            'url': result['url'],
+            'valid': result['valid'],
+            'diagnosis': result['diagnosis'],
+            'details': {
+                'status_code': result['status_code'],
+                'is_reachable': result['is_reachable'],
+                'is_streaming_server': result['is_streaming_server'],
+                'response_time_ms': result['response_time_ms'],
+                'content_type': result['content_type'],
+                'error': result['error'],
+            }
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error validando stream: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/validate/all-streams")
+def api_validate_all_streams():
+    """
+    Valida TODAS las URLs de streaming.
+    Retorna resumen y lista de problemas.
+    """
+    if not HAS_VALIDATOR:
+        return jsonify({"error": "Validador no disponible"}), 503
+    
+    try:
+        emit_query = request.args.get('filter', 'all')  # 'all', 'problematic'
+        
+        if emit_query == 'problematic':
+            # Solo las que tienen pocas métricas
+            emisoras = (
+                db.session.query(Emisora)
+                .outerjoin(Cancion, Cancion.emisora_id == Emisora.id)
+                .group_by(Emisora.id)
+                .having(func.coalesce(func.count(Cancion.id), 0) <= 2)
+                .all()
+            )
+        else:
+            emisoras = Emisora.query.all()
+        
+        if not emisoras:
+            return jsonify({
+                'total': 0,
+                'validated': 0,
+                'problematic': [],
+                'summary': 'No hay emisoras para validar'
+            })
+        
+        # Validar
+        results = validator.validate_multiple(emisoras, verbose=False)
+        
+        # Actualizar base de datos
+        for emisora_id, result in results.items():
+            emisora = Emisora.query.get(emisora_id)
+            if emisora:
+                emisora.url_valida = result['valid']
+                emisora.es_stream_activo = result['is_streaming_server']
+                emisora.ultima_validacion = datetime.now()
+                emisora.diagnostico = result['diagnosis']
+        
+        db.session.commit()
+        
+        # Compilar respuesta
+        problematic_results = [
+            {
+                'emisora_id': eid,
+                'emisora_nombre': next((e.nombre for e in emisoras if e.id == eid), 'Unknown'),
+                'url': r['url'],
+                'diagnosis': r['diagnosis'],
+                'valid': r['valid'],
+                'error': r['error']
+            }
+            for eid, r in results.items()
+            if not r['valid']
+        ]
+        
+        return jsonify({
+            'total': len(emisoras),
+            'validated': len(results),
+            'valid': sum(1 for r in results.values() if r['valid']),
+            'invalid': sum(1 for r in results.values() if not r['valid']),
+            'problematic': problematic_results,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error validando todos los streams: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/stations/with-metrics")
+def api_stations_with_metrics():
+    """
+    Retorna todas las emisoras con sus métricas y estado de validación.
+    """
+    try:
+        plays_per_station = (
+            db.session.query(
+                Emisora.id,
+                Emisora.nombre,
+                Emisora.url_stream,
+                Emisora.pais,
+                Emisora.url_valida,
+                Emisora.es_stream_activo,
+                Emisora.diagnostico,
+                func.coalesce(func.count(Cancion.id), 0).label("plays"),
+            )
+            .outerjoin(Cancion, Cancion.emisora_id == Emisora.id)
+            .group_by(
+                Emisora.id, Emisora.nombre, Emisora.url_stream,
+                Emisora.pais, Emisora.url_valida, Emisora.es_stream_activo,
+                Emisora.diagnostico
+            )
+            .order_by(func.coalesce(func.count(Cancion.id), 0))
+            .all()
+        )
+        
+        data = []
+        for station in plays_per_station:
+            data.append({
+                'id': station.id,
+                'nombre': station.nombre,
+                'url_stream': station.url_stream,
+                'pais': station.pais,
+                'plays': int(station.plays) if station.plays else 0,
+                'url_valida': station.url_valida if station.url_valida is not None else True,
+                'es_stream_activo': station.es_stream_activo if station.es_stream_activo is not None else True,
+                'diagnostico': station.diagnostico,
+                'status': 'critical' if station.plays == 0 else ('warning' if station.plays <= 2 else 'ok'),
+            })
+        
+        return jsonify({
+            'total': len(data),
+            'critical': sum(1 for s in data if s['plays'] == 0),
+            'warning': sum(1 for s in data if 0 < s['plays'] <= 2),
+            'ok': sum(1 for s in data if s['plays'] > 2),
+            'stations': data
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error obteniendo métricas: {e}")
+        return jsonify({"error": str(e)}), 500
 """
 =====================================================
 📄 RESUMEN DE LOS CAMBIOS IMPLEMENTADOS
@@ -1267,6 +1584,7 @@ def flujo_registro_manual():
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
+        app.logger.info("Iniciando monitor de emisoras...")
         start_monitor_thread()
     
     app.run(

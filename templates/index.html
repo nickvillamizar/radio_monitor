@@ -142,7 +142,7 @@
           <h3>Emisoras registradas</h3>
           <div class="card-actions">
             <input id="filter-station" class="input-sm" placeholder="Buscar emisora..." />
-            <button id="manage-stations" class="btn-outline">Administrar</button>
+            <button id="manage-stations" class="btn-outline">⚙️ Administrar</button>
           </div>
         </div>
 
@@ -150,19 +150,15 @@
           <table class="table-compact" id="emisoras-table" role="table">
             <thead>
               <tr>
+                <th>Estado</th>
                 <th>Emisora</th>
                 <th>Última canción</th>
                 <th>Última actualización</th>
+                <th>Días</th>
               </tr>
             </thead>
-            <tbody>
-              {% for e in emisoras %}
-                <tr data-pais="{{ e.pais or '' }}">
-                  <td class="station-name">{{ e.nombre }}</td>
-                  <td>{{ e.ultima_cancion or 'Cortes comerciales' }}</td>
-                  <td>{{ e.ultima_actualizacion.strftime('%Y-%m-%d %H:%M:%S') if e.ultima_actualizacion else '---' }}</td>
-                </tr>
-              {% endfor %}
+            <tbody id="emisoras-tbody">
+              <!-- Se carga con JavaScript -->
             </tbody>
           </table>
         </div>
@@ -251,20 +247,62 @@
   <div id="emisoras-modal" class="modal" aria-hidden="true">
     <div class="modal-panel large">
       <button id="emisoras-close" class="modal-close" aria-label="Cerrar">✕</button>
-      <h2>Administrar emisoras</h2>
+      <h2>Administrar Emisoras — Estado y Monitoreo</h2>
+      
+      <!-- Filtros rápidos -->
+      <div style="margin-bottom: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+        <button id="filter-all-stations" class="btn-small" style="background: #0077cc;">Todas</button>
+        <button id="filter-active-today" class="btn-small" style="background: #00aa44;">Hoy</button>
+        <button id="filter-active-week" class="btn-small" style="background: #ffaa00;">Esta Semana</button>
+        <button id="filter-inactive-month" class="btn-small" style="background: #ff6600;">Últimos 30d</button>
+        <button id="filter-inactive-old" class="btn-small" style="background: #cc0000;">Inactivas +30d</button>
+      </div>
+
+      <div style="margin-bottom: 1rem; font-size: 0.9rem; color: #999;">
+        <span id="emisoras-count">Total: —</span>
+      </div>
+      
       <div class="table-wrapper small-scroll">
         <table class="table-compact" id="emisoras-admin-table">
           <thead>
-            <tr><th>Nombre</th><th>URL Stream</th><th>País</th><th>Acciones</th></tr>
+            <tr>
+              <th>Estado</th>
+              <th>Nombre</th>
+              <th>País</th>
+              <th>Última Actualización</th>
+              <th>Plays 24h</th>
+              <th>Plays 7d</th>
+              <th>URL</th>
+              <th>Acciones</th>
+            </tr>
           </thead>
           <tbody></tbody>
         </table>
       </div>
-      <div class="form-inline">
-        <input id="new-name" placeholder="Nombre" />
-        <input id="new-url" placeholder="URL Stream" />
-        <input id="new-country" placeholder="País (opcional)" />
-        <button id="add-station" class="btn-primary">Agregar</button>
+      
+      <hr style="margin: 1rem 0; border: none; border-top: 1px solid #444;">
+      
+      <h3 style="margin-top: 1rem;">Agregar Nueva Emisora</h3>
+      <div class="form-grid" style="grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+        <div>
+          <label>Nombre *</label>
+          <input id="new-name" class="input-sm" placeholder="Ej: Radio FM 101" />
+        </div>
+        <div>
+          <label>URL Stream *</label>
+          <input id="new-url" class="input-sm" placeholder="https://..." />
+        </div>
+        <div>
+          <label>País</label>
+          <input id="new-country" class="input-sm" placeholder="República Dominicana" />
+        </div>
+        <div>
+          <label>Ciudad</label>
+          <input id="new-city" class="input-sm" placeholder="Santo Domingo" />
+        </div>
+        <div style="grid-column: 1 / -1;">
+          <button id="add-station" class="btn-primary" style="width: 100%; padding: 0.75rem;">➕ Agregar Emisora</button>
+        </div>
       </div>
     </div>
   </div>
@@ -689,8 +727,9 @@
     // MODAL DE ADMINISTRACIÓN DE EMISORAS
     const emisorasModal = document.getElementById('emisoras-modal');
     const emisorasTableBody = document.querySelector('#emisoras-admin-table tbody');
+    let estadoFiltro = null;
 
-    document.getElementById('manage-stations').addEventListener('click', async () => {
+    document.getElementById('manage-stations')?.addEventListener('click', async () => {
       emisorasModal.classList.add('open');
       emisorasModal.setAttribute('aria-hidden', 'false');
       await cargarEmisoras();
@@ -701,82 +740,140 @@
       emisorasModal.setAttribute('aria-hidden', 'true');
     });
 
+    // Botones de filtro por estado
+    document.getElementById('filter-all-stations')?.addEventListener('click', () => {
+      estadoFiltro = null;
+      cargarEmisoras();
+    });
+    document.getElementById('filter-active-today')?.addEventListener('click', () => {
+      estadoFiltro = 'activo_hoy';
+      cargarEmisoras();
+    });
+    document.getElementById('filter-active-week')?.addEventListener('click', () => {
+      estadoFiltro = 'activo_semana';
+      cargarEmisoras();
+    });
+    document.getElementById('filter-inactive-month')?.addEventListener('click', () => {
+      estadoFiltro = 'inactivo_mes';
+      cargarEmisoras();
+    });
+    document.getElementById('filter-inactive-old')?.addEventListener('click', () => {
+      estadoFiltro = 'inactivo_mucho';
+      cargarEmisoras();
+    });
+
+    function getEstadoBadge(estado, color) {
+      const labels = {
+        'activo_hoy': '✓ Hoy',
+        'activo_ayer': '✓ Ayer',
+        'activo_semana': '✓ Semana',
+        'inactivo_mes': '⚠ 30d',
+        'inactivo_mucho': '✗ Inactiva',
+        'sin_datos': '? Sin datos'
+      };
+      return `<span style="background:${color};color:white;padding:2px 6px;border-radius:4px;font-size:0.8rem;font-weight:bold;">${labels[estado] || estado}</span>`;
+    }
+
     async function cargarEmisoras() {
       try {
-        emisorasTableBody.innerHTML = '<tr><td colspan="4">Cargando...</td></tr>';
+        emisorasTableBody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;">Cargando...</td></tr>';
+        
         const res = await fetch('/api/emisoras');
         if (!res.ok) throw new Error('Error cargando emisoras');
-        const emisoras = await res.json();
-        emisorasTableBody.innerHTML = emisoras.map(e => `
-          <tr data-id="${e.id}">
-            <td contenteditable="true" class="edit-nombre">${e.nombre || ''}</td>
-            <td contenteditable="true" class="edit-url">${e.url_stream || ''}</td>
-            <td contenteditable="true" class="edit-pais">${e.pais || ''}</td>
-            <td>
-              <button class="btn-small btn-save" title="Guardar">💾</button>
-              <button class="btn-small btn-delete" title="Eliminar">🗑️</button>
-            </td>
-          </tr>`).join('');
+        let emisoras = await res.json();
+        
+        // Filtrar por estado si hay uno seleccionado
+        if (estadoFiltro) {
+          emisoras = emisoras.filter(e => e.estado === estadoFiltro);
+        }
+        
+        document.getElementById('emisoras-count').textContent = `Total: ${emisoras.length} emisoras`;
+        
+        if (emisoras.length === 0) {
+          emisorasTableBody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;">No hay emisoras</td></tr>';
+          return;
+        }
+        
+        emisorasTableBody.innerHTML = emisoras.map(e => {
+          const diasText = e.dias_sin_actualizar === null ? '—' : 
+                          e.dias_sin_actualizar === 0 ? 'Hoy' :
+                          e.dias_sin_actualizar === 1 ? 'Ayer' :
+                          `${e.dias_sin_actualizar}d`;
+          
+          return `
+            <tr data-id="${e.id}">
+              <td style="text-align:center;">${getEstadoBadge(e.estado, e.color)}</td>
+              <td class="edit-nombre">${e.nombre}</td>
+              <td class="edit-pais">${e.pais}</td>
+              <td title="${e.ultima_actualizacion || ''}">${e.ultima_actualizacion ? e.ultima_actualizacion.substring(0, 10) : '—'} <small style="color:#999;">${diasText}</small></td>
+              <td style="text-align:center; font-weight:bold;">${e.plays_24h}</td>
+              <td style="text-align:center; font-weight:bold;">${e.plays_7d}</td>
+              <td style="font-size:0.8rem; color:#999; max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${e.url_stream}</td>
+              <td style="white-space:nowrap;">
+                <button class="btn-small btn-edit" data-id="${e.id}" title="Editar">✏️</button>
+                <button class="btn-small btn-delete" data-id="${e.id}" title="Eliminar">🗑️</button>
+              </td>
+            </tr>`;
+        }).join('');
       } catch (err) {
-        console.error('Error cargando emisoras:', err);
-        emisorasTableBody.innerHTML = '<tr><td colspan="4" class="muted">Error cargando emisoras</td></tr>';
+        console.error('Error:', err);
+        emisorasTableBody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#f00;">Error cargando</td></tr>';
       }
     }
 
+    // Manejador de eventos para botones de acciones
     document.addEventListener('click', async (e) => {
-      if (e.target.classList.contains('btn-save')) {
+      // Editar emisora
+      if (e.target.classList.contains('btn-edit')) {
+        const id = e.target.dataset.id;
+        const tr = e.target.closest('tr');
+        const nombre = prompt('Nuevo nombre:', tr.querySelector('.edit-nombre').textContent);
+        if (!nombre) return;
+
         try {
-          const tr = e.target.closest('tr');
-          const id = tr.dataset.id;
-          const nombre = tr.querySelector('.edit-nombre').textContent.trim();
-          const url_stream = tr.querySelector('.edit-url').textContent.trim();
-          const pais = tr.querySelector('.edit-pais').textContent.trim();
-
-          if (!nombre || !url_stream) {
-            showNotification('Nombre y URL son obligatorios', 'error');
-            return;
-          }
-
           const res = await fetch(`/api/emisoras/${id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ nombre, url_stream, pais })
+            body: JSON.stringify({ nombre })
           });
 
-          if (!res.ok) throw new Error('Error actualizando');
-          showNotification('Emisora actualizada correctamente');
-          await refrescarTablaEmisoras();
-          await loadCountries();
+          if (!res.ok) {
+            const err = await res.json();
+            showNotification(err.error || 'Error', 'error');
+            return;
+          }
+          showNotification('Actualizada');
+          cargarEmisoras();
         } catch (err) {
-          console.error('Error guardando:', err);
-          showNotification('Error actualizando emisora', 'error');
+          console.error('Error:', err);
+          showNotification('Error', 'error');
         }
       }
 
+      // Eliminar emisora
       if (e.target.classList.contains('btn-delete')) {
-        try {
-          const tr = e.target.closest('tr');
-          const id = tr.dataset.id;
-          if (!confirm('¿Eliminar esta emisora?')) return;
+        const id = e.target.dataset.id;
+        const nombre = e.target.closest('tr').querySelector('.edit-nombre').textContent;
+        if (!confirm(`¿Eliminar "${nombre}"?`)) return;
 
+        try {
           const res = await fetch(`/api/emisoras/${id}`, { method: 'DELETE' });
           if (!res.ok) throw new Error('Error eliminando');
-          tr.remove();
-          showNotification('Emisora eliminada correctamente');
-          await refrescarTablaEmisoras();
-          await loadCountries();
+          showNotification('Eliminada');
+          cargarEmisoras();
         } catch (err) {
-          console.error('Error eliminando:', err);
-          showNotification('Error eliminando emisora', 'error');
+          showNotification('Error', 'error');
         }
       }
     });
 
+    // Agregar nueva emisora
     document.getElementById('add-station').addEventListener('click', async () => {
       try {
         const nombre = document.getElementById('new-name').value.trim();
         const url_stream = document.getElementById('new-url').value.trim();
         const pais = document.getElementById('new-country').value.trim();
+        const ciudad = document.getElementById('new-city').value.trim();
 
         if (!nombre || !url_stream) {
           showNotification('Nombre y URL son obligatorios', 'error');
@@ -786,21 +883,23 @@
         const res = await fetch('/api/emisoras', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ nombre, url_stream, pais })
+          body: JSON.stringify({ nombre, url_stream, pais: pais || null, ciudad: ciudad || null })
         });
 
-        if (!res.ok) throw new Error('Error agregando');
+        if (!res.ok) {
+          const err = await res.json();
+          showNotification(err.error || 'Error', 'error');
+          return;
+        }
 
         document.getElementById('new-name').value = '';
         document.getElementById('new-url').value = '';
         document.getElementById('new-country').value = '';
-        showNotification('Emisora agregada correctamente');
-        await cargarEmisoras();
-        await refrescarTablaEmisoras();
-        await loadCountries();
+        document.getElementById('new-city').value = '';
+        showNotification('Emisora agregada');
+        cargarEmisoras();
       } catch (err) {
-        console.error('Error agregando:', err);
-        showNotification('Error agregando emisora', 'error');
+        showNotification('Error', 'error');
       }
     });
 
@@ -809,18 +908,30 @@
         const res = await fetch('/api/emisoras');
         if (!res.ok) return;
         const emisoras = await res.json();
-        const tbody = document.querySelector('#emisoras-table tbody');
-        tbody.innerHTML = emisoras.map(e => `
-          <tr data-pais="${e.pais || ''}">
-            <td class="station-name">
-              <img class="station-logo" src="/image/station/${e.id}" alt="Logo" loading="lazy" 
-                   onerror="this.onerror=null; this.src='${getDefaultStationImage()}';">
-              ${e.nombre || '—'}
-            </td>
-            <td>${e.ultima_cancion || 'Sin datos'}</td>
-            <td>${e.ultima_actualizacion ? new Date(e.ultima_actualizacion).toLocaleString() : '---'}</td>
-          </tr>
-        `).join('');
+        const tbody = document.getElementById('emisoras-tbody');
+        
+        tbody.innerHTML = emisoras.map(e => {
+          const diasText = e.dias_sin_actualizar === null ? '—' : 
+                          e.dias_sin_actualizar === 0 ? 'Hoy' :
+                          e.dias_sin_actualizar === 1 ? 'Ayer' :
+                          `${e.dias_sin_actualizar}d`;
+          
+          const estadoBadge = `<span style="background:${e.color};color:white;padding:2px 6px;border-radius:4px;font-size:0.75rem;font-weight:bold;white-space:nowrap;">${e.estado}</span>`;
+          
+          return `
+            <tr data-pais="${e.pais || ''}" style="background: ${e.dias_sin_actualizar && e.dias_sin_actualizar > 30 ? 'rgba(204, 0, 0, 0.05)' : 'transparent'};">
+              <td style="text-align:center; padding: 6px 2px;">${estadoBadge}</td>
+              <td class="station-name" style="font-weight: ${e.dias_sin_actualizar && e.dias_sin_actualizar > 30 ? 'bold' : 'normal'}; color: ${e.dias_sin_actualizar && e.dias_sin_actualizar > 30 ? '#cc0000' : 'inherit'};">
+                ${e.nombre || '—'}
+              </td>
+              <td style="font-size: 0.85rem; color: #999; max-width: 250px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                ${e.ultima_cancion || 'Sin datos'}
+              </td>
+              <td style="white-space: nowrap;">${e.ultima_actualizacion || '—'}</td>
+              <td style="text-align: center; font-weight: bold; color: ${e.color}; white-space: nowrap;">${diasText}</td>
+            </tr>
+          `;
+        }).join('');
       } catch (err) {
         console.error('Error refrescando emisoras:', err);
       }
@@ -941,9 +1052,31 @@
       }
     });
 
+    // FILTRO DE BÚSQUEDA EN TABLA DE EMISORAS
+    document.getElementById('filter-station').addEventListener('keyup', (e) => {
+      const filter = e.target.value.toLowerCase();
+      const rows = document.querySelectorAll('#emisoras-tbody tr');
+      let visibles = 0;
+      
+      rows.forEach(row => {
+        const nombre = row.textContent.toLowerCase();
+        if (nombre.includes(filter)) {
+          row.style.display = '';
+          visibles++;
+        } else {
+          row.style.display = 'none';
+        }
+      });
+      
+      if (visibles === 0 && filter.length > 0) {
+        // Mostrar mensaje de no hay resultados
+      }
+    });
+
     // INICIALIZACIÓN AL CARGAR LA PÁGINA
     document.addEventListener('DOMContentLoaded', async () => {
       await loadCountries();
+      await refrescarTablaEmisoras();  // Cargar tabla de emisoras
       
       const hours = parseInt(document.getElementById('timeseries-hours').value || 24);
       await loadTimeseries(hours);
@@ -964,6 +1097,9 @@
       } catch (err) {
         console.debug('No hay filtros guardados');
       }
+      
+      // Recargar emisoras cada 30 segundos
+      setInterval(refrescarTablaEmisoras, 30000);
     });
 
     // Guardar filtros en localStorage
