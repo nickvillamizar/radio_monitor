@@ -863,7 +863,8 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
                             detected_info = {
                                 "artist": artista,
                                 "title": titulo,
-                                "genre": None
+                                "genre": None,
+                                "fuente": "icy"
                             }
                             stats["icy_success"] += 1
                             logger.info(f"[SUCCESS] ICY EXITOSO: {artista} - {titulo}")
@@ -881,6 +882,7 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
                     
                     if audd_result:
                         detected_info = audd_result
+                        detected_info["fuente"] = "audd"  # Marcar fuente
                         stats["audd_success"] += 1
                         logger.info(f"[SUCCESS] AUDD EXITOSO: {audd_result['artist']} - {audd_result['title']}")
                         if audd_result.get("genre") and audd_result["genre"] != "Desconocido":
@@ -910,14 +912,44 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
                         else:
                             detected_info["genre"] = "Desconocido"
                 
-                # PASO 4: FALLBACK (SIEMPRE REGISTRAMOS ALGO)
+                # PASO 4: PLAN B - PREDICCIÓN INTELIGENTE (si ICY+AudD fallaron)
                 if not detected_info:
-                    detected_info = {
-                        "artist": "Artista Desconocido",
-                        "title": "Transmisión en Vivo",
-                        "genre": "Desconocido"
-                    }
-                    logger.warning(f"[WARN]  FALLBACK: Sin detección automática")
+                    logger.info(f"[PLAN-B] Activando predicción inteligente basada en histórico...")
+                    
+                    try:
+                        from plan_b_predictor import PlanBPredictor
+                        
+                        predictor = PlanBPredictor(e.id)
+                        prediction = predictor.predict_song(strategy="auto")
+                        
+                        if prediction:
+                            detected_info = {
+                                "artist": prediction.get("artista", "Desconocido"),
+                                "title": prediction.get("titulo", "Transmisión en Vivo"),
+                                "genre": prediction.get("genero", "Desconocido"),
+                                "fuente": "plan_b",
+                                "razon": prediction.get("razon", "Predicción automática"),
+                                "confianza": prediction.get("confianza", 0)
+                            }
+                            logger.info(f"[PLAN-B] [SUCCESS] Predicción exitosa")
+                            logger.info(f"   Artista: {detected_info['artist']}")
+                            logger.info(f"   Título: {detected_info['title']}")
+                            logger.info(f"   Razon: {detected_info.get('razon', '')}")
+                            logger.info(f"   Confianza: {detected_info.get('confianza', 0)}%")
+                        else:
+                            logger.warning(f"[PLAN-B] No hay histórico para predecir - FALLBACK genérico")
+                            detected_info = {
+                                "artist": "Artista Desconocido",
+                                "title": "Transmisión en Vivo",
+                                "genre": "Desconocido"
+                            }
+                    except Exception as pb_exc:
+                        logger.warning(f"[PLAN-B] Error en predictor: {pb_exc} - FALLBACK genérico")
+                        detected_info = {
+                            "artist": "Artista Desconocido",
+                            "title": "Transmisión en Vivo",
+                            "genre": "Desconocido"
+                        }
                 
                 # PASO 5: VERIFICAR DUPLICADO
                 artista = detected_info["artist"]
@@ -937,13 +969,18 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
                 logger.info(f"   Artista: {artista}")
                 logger.info(f"   Título:  {titulo}")
                 logger.info(f"   Género:  {genero}")
+                if detected_info.get("fuente"):
+                    logger.info(f"   Fuente:  {detected_info.get('fuente', 'icy').upper()}")
                 
                 nueva = Cancion(
                     titulo=titulo,
                     artista=artista,
                     genero=genero,
                     emisora_id=e.id,
-                    fecha_reproduccion=datetime.now()
+                    fecha_reproduccion=datetime.now(),
+                    fuente=detected_info.get("fuente", "icy"),
+                    razon_prediccion=detected_info.get("razon", None),
+                    confianza_prediccion=detected_info.get("confianza", None)
                 )
                 
                 db.session.add(nueva)

@@ -35,6 +35,11 @@ class Cancion(db.Model):
     genero = db.Column(db.String(100), default="Desconocido")
     emisora_id = db.Column(db.Integer, db.ForeignKey("emisoras.id"))
     fecha_reproduccion = db.Column(db.DateTime, default=datetime.now)
+    
+    # 🔹 Metadata de detección
+    fuente = db.Column(db.String(20), default="icy", nullable=True)  # icy, audd, plan_b
+    razon_prediccion = db.Column(db.String(200), nullable=True)  # Si es plan_b
+    confianza_prediccion = db.Column(db.Float, nullable=True)  # Porcentaje (0-100)
 
 
 # ---------------------------
