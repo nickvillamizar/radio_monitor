@@ -279,15 +279,55 @@ class PredictiveModel:
         
         return self.get_hourly_genre()
 
+    def _infer_station_genre(self, station_name: Optional[str] = None) -> str:
+        """
+        🎯 Analizar el nombre de la emisora para inferir género probable
+        
+        Args:
+            station_name: Nombre de la emisora
+        
+        Returns:
+            str: Género inferido
+        """
+        if not station_name:
+            return self.get_hourly_genre()
+        
+        station_lower = station_name.lower()
+        
+        # Patrones para cada género (orden importa - probar específicos primero)
+        genre_patterns = {
+            "Salsa": ["salsa", "tropical", "guaguancó", "timba", "mambo"],
+            "Reggaeton": ["reggaeton", "urbana", "trap", "hip hop", "hip-hop", "urban", "calle"],
+            "Bachata": ["bachata", "romántica", "balada", "bolero", "amor", "sentimiento"],
+            "Merengue": ["merengue", "típica", "tradicional", "dominicana"],
+        }
+        
+        # Buscar coincidencias de patrones (en orden: Salsa, Reggaeton, Bachata, Merengue)
+        for genre, patterns in genre_patterns.items():
+            for pattern in patterns:
+                if pattern in station_lower:
+                    logger.debug(f"[INFER] Emisora '{station_name}' -> Genero: {genre} (patron: {pattern})")
+                    return genre
+        
+        # Si no coincide con patrones específicos, usar patrón general
+        if any(word in station_lower for word in ["fm", "radio", "pop", "moderna", "digital"]):
+            return "Pop Latino"
+        
+        # Default: género por hora
+        return self.get_hourly_genre()
+
     def predict_song(self, 
                     station_name: Optional[str] = None,
                     genre_hint: Optional[str] = None) -> Dict:
         """
-        ⭐ MÉTODO PRINCIPAL: Predecir una canción real
+        ⭐ MÉTODO PRINCIPAL: Predecir una canción CONTEXTUAL por emisora
+        
+        Ahora INTELIGENTE: Analiza el nombre de la emisora para predecir
+        canciones acordes al tipo de música que probablemente toca.
         
         Args:
             station_name: Nombre de la emisora (para contexto)
-            genre_hint: Género sugerido (si no, usa hora)
+            genre_hint: Género sugerido (si no, usa inferencia o hora)
         
         Returns:
             Dict con: {
@@ -295,39 +335,68 @@ class PredictiveModel:
                 'titulo': str,
                 'genero': str,
                 'confianza': float (0-100),
-                'metodo': str ('prediccion_horaria', 'prediccion_trending', 'evergreen'),
-                'razon': str (explicación)
+                'metodo': str,
+                'razon': str,
+                'razon_prediccion': str (con nombre de emisora)
             }
         """
         
-        # Elegir método de predicción
+        # 1️⃣ INFERIR GÉNERO CONTEXTUAL DE LA EMISORA
+        inferred_genre = genre_hint or self._infer_station_genre(station_name)
+        
+        # 2️⃣ ELEGIR MÉTODO DE PREDICCIÓN
         method_choice = random.random()
         
         if method_choice < 0.6:
-            # 60%: Usar canción evergreen + género horario
-            artist, song_title = random.choice(EVERGREEN_SONGS)
+            # 60%: Usar canción evergreen del género inferido
+            # Filtrar evergreen songs para el género
+            evergreen_for_genre = [
+                (a, t) for a, t in EVERGREEN_SONGS
+                if self._get_genre_for_artist(a) == inferred_genre or random.random() > 0.7
+            ]
+            
+            if evergreen_for_genre:
+                artist, song_title = random.choice(evergreen_for_genre)
+            else:
+                artist, song_title = random.choice(EVERGREEN_SONGS)
+            
             genre = self._get_genre_for_artist(artist)
             confidence = 85
             method = "evergreen"
-            reason = f"Canción clásica garantizada {genre}"
+            reason = f"Clásico garantizado ({genre})"
             
         elif method_choice < 0.85:
-            # 25%: Trending artist + género horario
-            genre = genre_hint or self.get_hourly_genre()
-            artist = self.select_artist_for_genre(genre)
+            # 25%: Trending artist del género inferido
+            genre = inferred_genre
+            
+            # Obtener artistas disponibles para este género
+            if genre in TRENDING_ARTISTS_RD:
+                artist = random.choice(TRENDING_ARTISTS_RD[genre])
+            else:
+                artist = self.select_artist_for_genre(genre)
+            
             _, song_title, _ = self.select_song_for_artist(artist)
             confidence = 75
             method = "trending"
             reason = f"Artista trending {genre}"
             
         else:
-            # 15%: Género aleatorio del horario
-            genre = self.get_hourly_genre()
-            artist = self.select_artist_for_genre(genre)
+            # 15%: Género del horario pero respetando contexto
+            genre = inferred_genre if station_name else self.get_hourly_genre()
+            
+            # Obtener artista del género contextual
+            if genre in TRENDING_ARTISTS_RD:
+                artist = random.choice(TRENDING_ARTISTS_RD[genre])
+            else:
+                artist = self.select_artist_for_genre(genre)
+            
             _, song_title, _ = self.select_song_for_artist(artist)
             confidence = 70
             method = "horario"
             reason = f"Patrón horario: {genre}"
+        
+        # 3️⃣ CONSTRUIR RESPUESTA CON CONTEXTO
+        station_context = f" [{station_name}]" if station_name else ""
         
         prediction = {
             'artista': artist,
@@ -336,13 +405,13 @@ class PredictiveModel:
             'confianza': confidence,
             'metodo': method,
             'razon': reason,
-            'fuente': 'prediccion',  # IMPORTANTE: marcar como predicción
-            'razon_prediccion': 'Modelo analítico predictivo — Última línea de defensa',
+            'fuente': 'prediccion',
+            'razon_prediccion': f"Predicción contextual{station_context} → {genre} ({method})",
             'confianza_prediccion': confidence / 100.0,
         }
         
-        logger.info(f"[PREDICT] 🤖 PREDICCIÓN: {artist} - {song_title} "
-                   f"({genre}, confianza: {confidence}%, método: {method})")
+        logger.info(f"[PREDICT] 🎯 {artist} - {song_title} "
+                   f"({genre}, confianza: {confidence}%, método: {method}){station_context}")
         
         return prediction
 
@@ -385,7 +454,12 @@ def predict_song_now(station_name: Optional[str] = None) -> Dict:
 def get_song_for_station(station_name: str, 
                         fallback_history: Optional[List[Dict]] = None) -> Dict:
     """
-    Obtener canción inteligente para una emisora específica
+    🎯 Obtener canción INTELIGENTE para una emisora específica
+    
+    Características:
+    - Analiza el nombre de la emisora para inferir género
+    - Evita repetir canciones recientes (últimas 10 para esa emisora)
+    - Crea predicción contextual, no aleatoria
     
     Args:
         station_name: Nombre de la emisora
@@ -395,18 +469,25 @@ def get_song_for_station(station_name: str,
         Dict: Predicción adaptada a la emisora
     """
     prediction = predictor.predict_song(station_name=station_name)
+    attempts = 0  # Inicializar attempts
     
-    # Si tenemos historial, evitar repetir
+    # Si tenemos historial, evitar repetir en ESTA emisora
     if fallback_history:
         recent_songs = {
-            (s['artista'], s['titulo']) 
-            for s in fallback_history[-10:]
+            (s['artista'].lower(), s['titulo'].lower()) 
+            for s in fallback_history[-10:]  # Últimas 10 en historial de esta emisora
         }
         
-        attempts = 0
-        while (prediction['artista'], prediction['titulo']) in recent_songs and attempts < 3:
+        while (prediction['artista'].lower(), prediction['titulo'].lower()) in recent_songs and attempts < 5:
             prediction = predictor.predict_song(station_name=station_name)
             attempts += 1
+            logger.debug(f"[STATION] Reintentando predicción para {station_name} (intento {attempts})")
+    
+    # Marcar con contexto específico de la emisora
+    prediction['razon_prediccion'] = f"Emisora '{station_name}' -> Genero contextual: {prediction['genero']}"
+    
+    logger.info(f"[STATION] CONTEXTO {station_name}: {prediction['artista']} - {prediction['titulo']} "
+               f"({prediction['genero']}) [reintentos: {attempts}]")
     
     return prediction
 
