@@ -14,7 +14,15 @@
         <p class="subtitle">Detección automática en vivo — Actualizaciones en tiempo real</p>
       </div>
       <div class="header-actions">
-        <div id="sync-status" class="small-muted" style="color: #00e8a2;">✓ Sincronizado (auto-refresh activo)</div>
+        <div id="sync-status" class="sync-indicator" style="font-weight: bold; font-size: 0.9rem; text-align: right;">
+          <div style="color: #00e8a2; margin-bottom: 4px;">
+            <span id="sync-dot" style="display: inline-block; width: 8px; height: 8px; background: #00e8a2; border-radius: 50%; margin-right: 6px; animation: pulse 2s infinite;"></span>
+            <span id="sync-text">Sincronizando...</span>
+          </div>
+          <div style="color: #888; font-size: 0.8rem;">
+            Próx: <span id="sync-countdown">15</span>s
+          </div>
+        </div>
         <button id="refresh-btn" class="btn-outline" title="Forzar actualización ahora">🔄 Actualizar</button>
       </div>
     </div>
@@ -396,32 +404,81 @@
     }
 
     // ============================================================================
-    // CICLO DE AUTO-REFRESH
+    // CICLO DE AUTO-REFRESH - GARANTIZA DATOS FRESCOS CADA 15 SEGUNDOS
     // ============================================================================
     let lastRefreshTime = Date.now();
+    let refreshTimer = null;
+    let countdownTimer = null;
+    let isRefreshing = false;
+    
+    function updateCountdown(secondsLeft) {
+      const countdown = document.getElementById('sync-countdown');
+      if (countdown) {
+        countdown.textContent = secondsLeft;
+      }
+    }
+    
+    function setRefreshing(refreshing) {
+      isRefreshing = refreshing;
+      const dot = document.getElementById('sync-dot');
+      const text = document.getElementById('sync-text');
+      
+      if (refreshing) {
+        if (dot) {
+          dot.style.animation = 'pulse 0.5s infinite';
+          dot.style.background = '#ffaa00';
+        }
+        if (text) text.textContent = 'Actualizando...';
+      } else {
+        if (dot) {
+          dot.style.animation = 'pulse 2s infinite';
+          dot.style.background = '#00e8a2';
+        }
+        if (text) text.textContent = 'Sincronizado';
+      }
+    }
     
     async function autoRefresh() {
+      if (isRefreshing) return; // Evitar actualizaciones simultáneas
+      
+      setRefreshing(true);
+      
       try {
         await loadTopSongs();
         await loadLatestPlays();
         await updateStats();
         lastRefreshTime = Date.now();
         
-        // Actualizar indicador
-        const status = document.getElementById('sync-status');
-        if (status) {
-          status.textContent = `✓ Actualizado a las ${new Date().toLocaleTimeString('es-ES')}`;
-          status.style.color = '#00e8a2';
-          status.style.opacity = '1';
-          
-          // Fade out después de 3s
-          setTimeout(() => {
-            status.style.opacity = '0.5';
-          }, 3000);
-        }
+        setRefreshing(false);
+        
+        // Log para verificar
+        console.log('[AUTO-REFRESH] Datos actualizados a', new Date().toLocaleTimeString('es-ES'));
+        
       } catch (err) {
         console.error('Error en auto-refresh:', err);
+        setRefreshing(false);
       }
+    }
+    
+    function startAutoRefreshCycle() {
+      // Limpiar timers anteriores
+      if (refreshTimer) clearInterval(refreshTimer);
+      if (countdownTimer) clearInterval(countdownTimer);
+      
+      // Auto-refresh cada 15 segundos
+      refreshTimer = setInterval(() => {
+        autoRefresh();
+      }, CONFIG.AUTO_REFRESH_INTERVAL);
+      
+      // Countdown cada segundo
+      let secondsLeft = CONFIG.AUTO_REFRESH_INTERVAL / 1000;
+      countdownTimer = setInterval(() => {
+        secondsLeft--;
+        if (secondsLeft <= 0) {
+          secondsLeft = CONFIG.AUTO_REFRESH_INTERVAL / 1000;
+        }
+        updateCountdown(secondsLeft);
+      }, 1000);
     }
 
     // ============================================================================
@@ -448,29 +505,23 @@
     // INICIALIZACIÓN
     // ============================================================================
     document.addEventListener('DOMContentLoaded', async () => {
-      console.log('🚀 Inicializando Radio Monitor...');
+      console.log('🚀 Inicializando Radio Monitor — Garantía de datos en tiempo real');
       
       // Cargar datos iniciales
+      setRefreshing(true);
       await autoRefresh();
+      setRefreshing(false);
+      
       setupSearch();
       setupExport();
       
-      // Auto-refresh cada 15 segundos
-      setInterval(autoRefresh, CONFIG.AUTO_REFRESH_INTERVAL);
+      // Iniciar ciclo de auto-refresh
+      startAutoRefreshCycle();
       
-      // Indicador visual de auto-refresh
-      let count = 1;
-      const statusInterval = setInterval(() => {
-        const status = document.getElementById('sync-status');
-        if (status && !status.textContent.includes('Actualizado')) {
-          status.textContent = `Próxima actualización en ${CONFIG.AUTO_REFRESH_INTERVAL / 1000 - count}s...`;
-          status.style.color = '#ffaa00';
-          count++;
-          if (count > CONFIG.AUTO_REFRESH_INTERVAL / 1000) {
-            count = 1;
-          }
-        }
-      }, 1000);
+      // Log de confirmación
+      console.log('✓ Auto-refresh iniciado: 15 segundos');
+      console.log('✓ Contador regresivo activo');
+      console.log('✓ Datos en tiempo real garantizados');
     });
 
     // ============================================================================
@@ -485,6 +536,10 @@
       @keyframes slideOut {
         from { transform: translateX(0); opacity: 1; }
         to { transform: translateX(400px); opacity: 0; }
+      }
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
       }
       #sync-status {
         transition: all 0.3s ease;

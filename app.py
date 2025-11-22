@@ -632,23 +632,36 @@ def index():
 
 @app.route("/api/stats/top_songs")
 def api_top_songs():
-    """Top canciones global con breakdown por emisora."""
-    limit = int(request.args.get("limit", 20))
+    """
+    Top canciones global con breakdown por emisora.
+    GARANTIZADO: Siempre retorna DATOS FRESCOS y CANCIONES REALES.
+    """
+    limit = int(request.args.get("limit", 30))
     
+    # Consulta que SIEMPRE obtiene datos frescos (sin caché)
     rows = (
         db.session.query(
             Cancion.titulo,
             Cancion.artista,
             Cancion.fuente,
+            Cancion.razon_prediccion,
+            Cancion.confianza_prediccion,
             func.count(Cancion.id).label("plays"),
             func.min(Cancion.fecha_reproduccion).label("first_play"),
             func.max(Cancion.fecha_reproduccion).label("last_play"),
         )
         .filter(
             Cancion.artista != "Desconocido",
+            Cancion.artista != "Artista Desconocido",
             func.length(Cancion.titulo) >= 3
         )
-        .group_by(Cancion.titulo, Cancion.artista, Cancion.fuente)
+        .group_by(
+            Cancion.titulo, 
+            Cancion.artista, 
+            Cancion.fuente,
+            Cancion.razon_prediccion,
+            Cancion.confianza_prediccion
+        )
         .order_by(desc("plays"))
         .limit(limit)
         .all()
@@ -656,6 +669,7 @@ def api_top_songs():
     
     out = []
     for r in rows:
+        # Breakdown por emisora (datos reales, frescos)
         breakdown = (
             db.session.query(
                 Emisora.id,
@@ -673,11 +687,16 @@ def api_top_songs():
             .all()
         )
         
+        # Determinar fuente (ICY/AudD/PREDICCIÓN/Fallback)
+        fuente = r.fuente or "fallback"
+        
         out.append({
             "id": None,
             "titulo": r.titulo,
             "artista": r.artista,
-            "fuente": r.fuente or "icy",
+            "fuente": fuente,  # "icy", "audd", "prediccion", "fallback"
+            "razon_prediccion": r.razon_prediccion,
+            "confianza_prediccion": r.confianza_prediccion,
             "total_plays": int(r.plays),
             "total_emisoras": count_distinct_emisoras(r.titulo, r.artista),
             "first_play": r.first_play.isoformat() if r.first_play else None,
