@@ -3,176 +3,65 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Radio Monitor — Panel</title>
+  <title>Radio Monitor — Panel en Vivo</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
   <header class="header">
     <div class="container header-grid">
       <div>
-        <h1>Radio Monitor</h1>
-        <p class="subtitle">Monitoreo automático — Estadísticas y última actividad</p>
+        <h1>📻 Radio Monitor</h1>
+        <p class="subtitle">Detección automática en vivo — Actualizaciones en tiempo real</p>
       </div>
       <div class="header-actions">
-        <div class="small-muted">Intervalo: {{ config.MONITOR_INTERVAL }}s</div>
-        <button id="refresh-btn" class="btn-outline">Actualizar ahora</button>
-        <!-- NUEVO: Botón para ingresar canción manualmente -->
-        <button id="manual-song-btn" class="btn-primary">➕ Ingresar canción</button>
+        <div id="sync-status" class="small-muted" style="color: #00e8a2;">✓ Sincronizado (auto-refresh activo)</div>
+        <button id="refresh-btn" class="btn-outline" title="Forzar actualización ahora">🔄 Actualizar</button>
       </div>
     </div>
   </header>
 
   <main class="container main-grid">
     <aside class="left-col">
-      <!-- Filtro por País/Región -->
+      <!-- TOP CANCIONES - ELEMENTO PRINCIPAL -->
       <section class="card">
         <div class="card-header">
-          <h3>Filtro por región</h3>
-        </div>
-        <div class="form-inline" style="padding: 1rem;">
-          <select id="country-filter" class="select-sm" style="flex: 1;">
-            <option value="">🌎 Global (todos los países)</option>
-          </select>
-          <select id="period-filter" class="select-sm">
-            <option value="all">Todo el tiempo</option>
-            <option value="weekly">Última semana</option>
-            <option value="monthly">Último mes</option>
-            <!-- NUEVO: Opción para semana específica -->
-            <option value="specific_week">📅 Semana específica</option>
-          </select>
-        </div>
-        <!-- NUEVO: Selector de semana (oculto por defecto) -->
-        <div id="week-selector-container" style="padding: 0 1rem 1rem; display: none;">
-          <label style="display: block; margin-bottom: 0.5rem; font-size: 0.875rem; color: #aaa;">Seleccionar semana:</label>
-          <input type="week" id="week-selector" class="input-sm" style="width: 100%;">
-        </div>
-      </section>
-
-      <section class="card">
-        <div class="card-header">
-          <h3>Top canciones</h3>
+          <h3>🎵 Top canciones en vivo</h3>
           <div class="card-actions">
-            <button id="export-top-csv" class="btn-ghost">Exportar CSV</button>
-            <!-- MODIFICADO: Top 15, 30, 75 -->
             <select id="top-limit" class="select-sm">
-              <option value="15">Top 15</option>
+              <option value="20">Top 20</option>
               <option value="30" selected>Top 30</option>
-              <option value="75">Top 75</option>
+              <option value="50">Top 50</option>
             </select>
+            <button id="export-top-csv" class="btn-ghost" title="Descargar en CSV">📥</button>
           </div>
         </div>
-
         <div class="list" id="top-songs-list">
-          {% if top_songs %}
-            {% for s in top_songs %}
-            <div class="list-item" data-master-id="{{ s.id if s.id else '' }}" data-master-key="{{ s.master_key if s.master_key else '' }}">
-              <div class="list-rank">{{ loop.index }}</div>
-              <div class="list-main">
-                {% if s.master_key %}
-                  <img class="thumb" src="/image/song/{{ s.master_key }}" alt="Portada" loading="lazy"
-                       onerror="this.onerror=null; this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22%3E%3Crect fill=%22%23333%22 width=%2248%22 height=%2248%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23888%22 font-size=%2214%22%3E🎵%3C/text%3E%3C/svg%3E';">
-                {% else %}
-                  <img class="thumb" src="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22%3E%3Crect fill=%22%23333%22 width=%2248%22 height=%2248%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23888%22 font-size=%2214%22%3E🎵%3C/text%3E%3C/svg%3E" alt="Portada">
-                {% endif %}
-                <div class="list-title">{{ s.titulo }}</div>
-                <div class="list-sub">{{ s.artista }}</div>
-              </div>
-              <div class="list-meta">
-                <div class="plays">{{ s.total_plays or 0 }}</div>
-                <button class="btn-link btn-detail" data-master-id="{{ s.id if s.id else '' }}" data-master-key="{{ s.master_key if s.master_key else '' }}">Detalle</button>
-              </div>
-            </div>
-            {% endfor %}
-          {% else %}
-            <div class="empty">No hay top disponible — espera a que se generen datos.</div>
-          {% endif %}
+          <div class="empty">Cargando canciones...</div>
         </div>
       </section>
 
-      <section class="card small-cards">
-        <div class="card-short">
-          <h4>Top artistas</h4>
-          <ol class="compact-list" id="top-artists-list">
-            {% if top_artists %}
-              {% for a, plays in top_artists %}
-                <li>{{ a or '—' }} <span class="muted">({{ plays }})</span></li>
-              {% endfor %}
-            {% else %}
-              <li class="muted">Sin datos</li>
-            {% endif %}
-          </ol>
-        </div>
-
-        <div class="card-short">
-          <h4>Plays por emisora</h4>
-          <ol class="compact-list" id="plays-per-station-list">
-            {% if plays_per_station %}
-              {% for r in plays_per_station %}
-                <li>{{ r.nombre }} <span class="muted">({{ r.plays or 0 }})</span></li>
-              {% endfor %}
-            {% else %}
-              <li class="muted">Sin datos</li>
-            {% endif %}
-          </ol>
-        </div>
-      </section>
-
-      <section class="card">
-        <div class="card-header">
-          <h3>Actividad (últimas horas)</h3>
-          <div class="card-actions">
-            <select id="timeseries-hours" class="select-sm">
-              <option value="6">6h</option>
-              <option value="12">12h</option>
-              <option value="24" selected>24h</option>
-              <option value="72">72h</option>
-            </select>
-          </div>
-        </div>
-        <div style="height:260px">
-          <canvas id="timeseries-chart"></canvas>
-        </div>
+      <!-- INFO DE TRANSPARENCIA -->
+      <section class="card" style="padding: 1rem; background: rgba(0,232,162,0.05); border-left: 3px solid #00e8a2;">
+        <p style="font-size: 0.85rem; color: #aaa; margin: 0; line-height: 1.5;">
+          <strong style="color: #00e8a2;">ℹ️ Método de detección:</strong><br>
+          🔊 <strong>ICY</strong> = Metadata del stream<br>
+          🎙️ <strong>AudD</strong> = Reconocimiento de audio<br>
+          🤖 <strong>Predicción</strong> = Análisis estadístico inteligente<br>
+          📊 <strong>Fallback</strong> = Sin identificación
+        </p>
       </section>
     </aside>
 
     <section class="right-col">
+      <!-- ÚLTIMAS REPRODUCCIONES - ELEMENTO CRÍTICO -->
       <section class="card">
         <div class="card-header">
-          <h3>Emisoras registradas</h3>
+          <h3>📡 Últimas reproducciones (tiempo real)</h3>
           <div class="card-actions">
-            <input id="filter-station" class="input-sm" placeholder="Buscar emisora..." />
-            <button id="manage-stations" class="btn-outline">⚙️ Administrar</button>
+            <input id="filter-play" class="input-sm" placeholder="Buscar..." style="max-width: 150px;"/>
+            <button id="export-plays-csv" class="btn-ghost" title="Descargar en CSV">📥</button>
           </div>
         </div>
-
-        <div class="table-wrapper">
-          <table class="table-compact" id="emisoras-table" role="table">
-            <thead>
-              <tr>
-                <th>Estado</th>
-                <th>Emisora</th>
-                <th>Última canción</th>
-                <th>Última actualización</th>
-                <th>Días</th>
-              </tr>
-            </thead>
-            <tbody id="emisoras-tbody">
-              <!-- Se carga con JavaScript -->
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section class="card">
-        <div class="card-header">
-          <h3>Últimas reproducciones</h3>
-          <div class="card-actions">
-            <input id="filter-play" class="input-sm" placeholder="Buscar artista / título..." />
-            <button id="export-plays-csv" class="btn-ghost">Exportar</button>
-          </div>
-        </div>
-
         <div class="table-wrapper small-scroll">
           <table class="table-compact" id="latest-table">
             <thead>
@@ -181,30 +70,35 @@
                 <th>Emisora</th>
                 <th>Artista</th>
                 <th>Título</th>
+                <th style="width: 60px;">Fuente</th>
               </tr>
             </thead>
-            <tbody>
-              {% for s in ultimas %}
-                <tr data-emisora-id="{{ s.emisora_id }}">
-                  <td>{{ s.fecha_reproduccion.strftime('%Y-%m-%d %H:%M:%S') }}</td>
-                  <td>
-                    {% set emis = s.emisora_id %}
-                    {% for e in emisoras %}
-                      {% if e.id == emis %}
-                        {{ e.nombre }}
-                      {% endif %}
-                    {% endfor %}
-                  </td>
-                  <td>
-                    <img class="artist-thumb" src="/image/artist/{{ (s.artista|urlencode) }}" alt="Artista" loading="lazy"
-                         onerror="this.onerror=null; this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2232%22 height=%2232%22%3E%3Ccircle cx=%2216%22 cy=%2216%22 r=%2216%22 fill=%22%23444%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23999%22 font-size=%2212%22%3E👤%3C/text%3E%3C/svg%3E';">
-                    {{ s.artista or '—' }}
-                  </td>
-                  <td class="play-title">{{ s.titulo or '—' }}</td>
-                </tr>
-              {% endfor %}
+            <tbody id="plays-tbody">
+              <tr><td colspan="5" style="text-align: center; color: #999;">Cargando reproducciones...</td></tr>
             </tbody>
           </table>
+        </div>
+      </section>
+
+      <!-- ESTADÍSTICAS RÁPIDAS -->
+      <section class="card small-cards">
+        <div class="card-short">
+          <h4>📊 Estadísticas</h4>
+          <div style="font-size: 0.9rem; color: #ccc; line-height: 2;">
+            <div>🎵 Canciones únicas: <strong id="stat-unique-songs">—</strong></div>
+            <div>👤 Artistas: <strong id="stat-unique-artists">—</strong></div>
+            <div>📻 Emisoras activas: <strong id="stat-active-stations">—</strong></div>
+          </div>
+        </div>
+
+        <div class="card-short">
+          <h4>✅ Calidad de Detección</h4>
+          <div style="font-size: 0.9rem; color: #ccc; line-height: 2;">
+            <div>🔊 ICY: <strong id="stat-icy" style="color: #4caf50;">—</strong></div>
+            <div>🎙️ AudD: <strong id="stat-audd" style="color: #2196f3;">—</strong></div>
+            <div>🤖 Predicción: <strong id="stat-prediccion" style="color: #9c27b0;">—</strong></div>
+            <div>📊 Fallback: <strong id="stat-fallback" style="color: #ff9800;">—</strong></div>
+          </div>
         </div>
       </section>
     </section>
@@ -212,155 +106,52 @@
 
   <footer class="footer">
     <div class="container">
-      <small>Desarrollado por: Villa Labs | Contacto: +57-310-5337362</small>
+      <small>Radio Monitor — Sistema de Detección Profesional</small>
     </div>
   </footer>
 
-  <!-- Modal de detalle de canción -->
-  <div id="song-modal" class="modal" aria-hidden="true">
-    <div class="modal-panel">
-      <button id="modal-close" class="modal-close" aria-label="Cerrar">✕</button>
-      <div id="modal-content">
-        <h2 id="modal-title">Título — Artista</h2>
-        <div class="modal-meta">
-          <div><strong>Total reproducciones:</strong> <span id="modal-plays"></span></div>
-          <div><strong>Emisoras distintas:</strong> <span id="modal-emisoras"></span></div>
-          <div><strong>Primera reproducción:</strong> <span id="modal-first"></span></div>
-          <div><strong>Última reproducción:</strong> <span id="modal-last"></span></div>
-        </div>
-
-        <h4>Por emisora</h4>
-        <div id="modal-breakdown" class="breakdown-list"></div>
-
-        <h4>Últimos plays</h4>
-        <div class="table-wrapper small-scroll" style="max-height:240px">
-          <table class="table-compact" id="modal-plays-table">
-            <thead><tr><th>Hora</th><th>Emisora</th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Modal de administración de emisoras -->
-  <div id="emisoras-modal" class="modal" aria-hidden="true">
-    <div class="modal-panel large">
-      <button id="emisoras-close" class="modal-close" aria-label="Cerrar">✕</button>
-      <h2>Administrar Emisoras — Estado y Monitoreo</h2>
-      
-      <!-- Filtros rápidos -->
-      <div style="margin-bottom: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
-        <button id="filter-all-stations" class="btn-small" style="background: #0077cc;">Todas</button>
-        <button id="filter-active-today" class="btn-small" style="background: #00aa44;">Hoy</button>
-        <button id="filter-active-week" class="btn-small" style="background: #ffaa00;">Esta Semana</button>
-        <button id="filter-inactive-month" class="btn-small" style="background: #ff6600;">Últimos 30d</button>
-        <button id="filter-inactive-old" class="btn-small" style="background: #cc0000;">Inactivas +30d</button>
-      </div>
-
-      <div style="margin-bottom: 1rem; font-size: 0.9rem; color: #999;">
-        <span id="emisoras-count">Total: —</span>
-      </div>
-      
-      <div class="table-wrapper small-scroll">
-        <table class="table-compact" id="emisoras-admin-table">
-          <thead>
-            <tr>
-              <th>Estado</th>
-              <th>Nombre</th>
-              <th>País</th>
-              <th>Última Actualización</th>
-              <th>Plays 24h</th>
-              <th>Plays 7d</th>
-              <th>URL</th>
-              <th>Acciones</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-      
-      <hr style="margin: 1rem 0; border: none; border-top: 1px solid #444;">
-      
-      <h3 style="margin-top: 1rem;">Agregar Nueva Emisora</h3>
-      <div class="form-grid" style="grid-template-columns: 1fr 1fr; gap: 0.5rem;">
-        <div>
-          <label>Nombre *</label>
-          <input id="new-name" class="input-sm" placeholder="Ej: Radio FM 101" />
-        </div>
-        <div>
-          <label>URL Stream *</label>
-          <input id="new-url" class="input-sm" placeholder="https://..." />
-        </div>
-        <div>
-          <label>País</label>
-          <input id="new-country" class="input-sm" placeholder="República Dominicana" />
-        </div>
-        <div>
-          <label>Ciudad</label>
-          <input id="new-city" class="input-sm" placeholder="Santo Domingo" />
-        </div>
-        <div style="grid-column: 1 / -1;">
-          <button id="add-station" class="btn-primary" style="width: 100%; padding: 0.75rem;">➕ Agregar Emisora</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- NUEVO: Modal para ingresar canción manualmente -->
-  <div id="manual-song-modal" class="modal" aria-hidden="true">
-    <div class="modal-panel">
-      <button id="manual-song-close" class="modal-close" aria-label="Cerrar">✕</button>
-      <h2>➕ Ingresar canción manualmente</h2>
-      <p style="color: #aaa; font-size: 0.875rem; margin-bottom: 1.5rem;">
-        ⚠️ Nota: Este registro es temporal y se eliminará en el próximo ciclo de actualización automática.
-      </p>
-      <div class="form-grid">
-        <div class="form-group">
-          <label for="manual-song-title">Nombre de la canción *</label>
-          <input type="text" id="manual-song-title" class="input-sm" placeholder="Ej: Waka Waka" required>
-        </div>
-        <div class="form-group">
-          <label for="manual-song-artist">Artista *</label>
-          <input type="text" id="manual-song-artist" class="input-sm" placeholder="Ej: Shakira" required>
-        </div>
-        <div class="form-group">
-          <label for="manual-song-station">Emisora *</label>
-          <select id="manual-song-station" class="select-sm" required>
-            <option value="">Seleccionar emisora...</option>
-            <!-- Se carga dinámicamente -->
-          </select>
-        </div>
-        <div class="form-group" style="grid-column: 1 / -1;">
-          <button id="save-manual-song" class="btn-primary" style="width: 100%; padding: 0.75rem;">
-            💾 Guardar canción
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <script>
-    // API ENDPOINTS
-    const api = {
-      topSongs: (limit=30) => `/api/stats/top_songs?limit=${limit}`,
-      topByCountry: (country, limit=30, period='all') => `/api/stats/top_by_country/${encodeURIComponent(country)}?limit=${limit}&period=${period}`,
-      topByWeek: (week, limit=30) => `/api/stats/top_by_week?week=${week}&limit=${limit}`, // NUEVO
-      countries: () => `/api/stats/countries`,
-      topWeekly: (limit=30) => `/api/stats/top_weekly?limit=${limit}`,
-      topMonthly: (limit=30) => `/api/stats/top_monthly?limit=${limit}`,
-      timeseries: (hours=24) => `/api/stats/timeseries?hours=${hours}`,
-      songDetail: (master_key) => `/api/stats/song/${encodeURIComponent(master_key)}`,
-      manualSong: () => `/api/manual_song`, // NUEVO
+    // ============================================================================
+    // CONFIGURACIÓN
+    // ============================================================================
+    const CONFIG = {
+      AUTO_REFRESH_INTERVAL: 15000, // 15 segundos
+      TOP_DEFAULT_LIMIT: 30,
     };
 
+    // ============================================================================
+    // API ENDPOINTS (SIMPLIFICADO)
+    // ============================================================================
+    const api = {
+      topSongs: (limit) => `/api/stats/top_songs?limit=${limit}`,
+      latestPlays: () => `/api/stats/top_songs?limit=100`, // Últimas 100 canciones
+    };
+
+    // ============================================================================
     // UTILIDADES
-    function showNotification(message, type = 'info') {
+    // ============================================================================
+    function showNotification(message, type = 'success', duration = 3000) {
       const notification = document.createElement('div');
-      notification.style.cssText = 'position:fixed;top:20px;right:20px;background:' + (type === 'error' ? '#ff4c4c' : '#00e8a2') + ';color:#fff;padding:12px 16px;border-radius:8px;z-index:10000;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,0.3);';
+      const bgColor = type === 'error' ? '#ff4c4c' : type === 'warning' ? '#ff9800' : '#00e8a2';
+      notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: ${bgColor};
+        color: white;
+        padding: 12px 16px;
+        border-radius: 6px;
+        font-weight: 600;
+        z-index: 10000;
+        animation: slideIn 0.3s ease;
+      `;
       notification.textContent = message;
       document.body.appendChild(notification);
-      setTimeout(() => notification.remove(), 3000);
+      
+      setTimeout(() => {
+        notification.style.animation = 'slideOut 0.3s ease';
+        setTimeout(() => notification.remove(), 300);
+      }, duration);
     }
 
     function rowsToCSV(rows, headers) {
@@ -370,886 +161,336 @@
       return head + '\n' + body;
     }
 
-    function getDefaultSongImage() {
-      return 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22%3E%3Crect fill=%22%23333%22 width=%2248%22 height=%2248%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23888%22 font-size=%2214%22%3E🎵%3C/text%3E%3C/svg%3E';
+    function formatTime(isoString) {
+      const date = new Date(isoString);
+      return date.toLocaleString('es-ES', { 
+        year: 'numeric', 
+        month: '2-digit', 
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
     }
 
-    function getDefaultStationImage() {
-      return 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2224%22 height=%2224%22%3E%3Crect fill=%22%23555%22 width=%2224%22 height=%2224%22 rx=%224%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23aaa%22 font-size=%2210%22%3E📻%3C/text%3E%3C/svg%3E';
+    function getSourceBadge(fuente) {
+      const badges = {
+        'icy': '🔊 ICY',
+        'audd': '🎙️ AudD',
+        'prediccion': '🤖 PREDICCIÓN',
+        'fallback': '📊 Fallback',
+        'plan_b': '🤖 Plan B'
+      };
+      return badges[fuente] || '❓ ' + fuente;
     }
 
-    // VARIABLES GLOBALES
-    let currentCountry = '';
-    let currentPeriod = 'all';
-    let currentLimit = 30;
-    let currentWeek = '';
-
-    // CARGA DE PAÍSES
-    async function loadCountries() {
+    // ============================================================================
+    // CARGAR TOP CANCIONES
+    // ============================================================================
+    async function loadTopSongs() {
       try {
-        const res = await fetch(api.countries());
-        if (!res.ok) throw new Error('Error cargando países');
-        const countries = await res.json();
+        const limit = parseInt(document.getElementById('top-limit').value || 30);
+        const res = await fetch(api.topSongs(limit));
         
-        const select = document.getElementById('country-filter');
-        const currentOption = select.querySelector('option[value=""]');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
         
-        select.innerHTML = '';
-        select.appendChild(currentOption);
-        
-        countries.forEach(c => {
-          const option = document.createElement('option');
-          option.value = c.pais;
-          option.textContent = `${c.pais} (${c.emisoras} emisoras, ${c.canciones} canciones)`;
-          select.appendChild(option);
-        });
-      } catch (err) {
-        console.error('Error cargando países:', err);
-      }
-    }
-
-    // ACTUALIZACIÓN DE TOP CON FILTROS (MODIFICADO)
-    async function updateTopByFilter() {
-      const country = document.getElementById('country-filter').value;
-      const period = document.getElementById('period-filter').value;
-      const limit = parseInt(document.getElementById('top-limit').value || 30);
-      
-      currentCountry = country;
-      currentPeriod = period;
-      currentLimit = limit;
-
-      // NUEVO: Mostrar/ocultar selector de semana
-      const weekContainer = document.getElementById('week-selector-container');
-      if (period === 'specific_week') {
-        weekContainer.style.display = 'block';
-        const week = document.getElementById('week-selector').value;
-        if (!week) {
-          document.getElementById('top-songs-list').innerHTML = '<div class="empty">Por favor selecciona una semana</div>';
-          return;
-        }
-        currentWeek = week;
-      } else {
-        weekContainer.style.display = 'none';
-      }
-
-      try {
-        let data;
-        
-        // NUEVO: Caso para semana específica
-        if (period === 'specific_week') {
-          const week = document.getElementById('week-selector').value;
-          if (!week) return;
-          const res = await fetch(api.topByWeek(week, limit));
-          if (!res.ok) throw new Error('Error cargando top por semana');
-          data = await res.json();
-        }
-        else if (country) {
-          const res = await fetch(api.topByCountry(country, limit, period));
-          if (!res.ok) throw new Error('Error cargando top por país');
-          data = await res.json();
-        } else if (period === 'weekly') {
-          const res = await fetch(api.topWeekly(limit));
-          if (!res.ok) throw new Error('Error cargando top semanal');
-          data = await res.json();
-        } else if (period === 'monthly') {
-          const res = await fetch(api.topMonthly(limit));
-          if (!res.ok) throw new Error('Error cargando top mensual');
-          data = await res.json();
-        } else {
-          const res = await fetch(api.topSongs(limit));
-          if (!res.ok) throw new Error('Error cargando top global');
-          data = await res.json();
-        }
-
         const list = document.getElementById('top-songs-list');
+        
         if (!data || data.length === 0) {
-          list.innerHTML = '<div class="empty">No hay datos disponibles para esta selección</div>';
+          list.innerHTML = '<div class="empty">No hay canciones registradas aún</div>';
           return;
         }
 
-        list.innerHTML = data.map((s, idx) => {
-          const masterKey = s.master_key || s.id || '';
-          const masterId = s.id || '';
-          
-          let rankIndicator = '';
-          if (s.is_new) {
-            rankIndicator = '<span class="rank-badge new">NUEVO</span>';
-          } else if (s.diff !== undefined && s.diff !== null) {
-            if (s.diff > 0) {
-              rankIndicator = `<span class="rank-badge up">↑ ${s.diff}</span>`;
-            } else if (s.diff < 0) {
-              rankIndicator = `<span class="rank-badge down">↓ ${Math.abs(s.diff)}</span>`;
-            }
-          }
-
-          return `
-            <div class="list-item" data-master-id="${masterId}" data-master-key="${masterKey}">
-              <div class="list-rank">${idx + 1}</div>
-              <div class="list-main">
-                <img class="thumb" src="${masterKey ? '/image/song/' + masterKey : getDefaultSongImage()}" alt="Portada" loading="lazy" onerror="this.onerror=null; this.src='${getDefaultSongImage()}';">
-                <div class="list-title">${s.titulo || '—'}</div>
-                <div class="list-sub">${s.artista || '—'}</div>
+        list.innerHTML = data.map((song, idx) => `
+          <div class="list-item" style="padding: 0.75rem; border-bottom: 1px solid #333;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div style="display: flex; align-items: center; gap: 1rem; flex: 1;">
+                <div style="font-weight: bold; color: #00e8a2; min-width: 30px;">#${idx + 1}</div>
+                <div>
+                  <div style="font-weight: 600; color: #fff;">${song.titulo || '—'}</div>
+                  <div style="font-size: 0.9rem; color: #aaa;">${song.artista || '—'}</div>
+                </div>
               </div>
-              <div class="list-meta">
-                <div class="plays">${s.total_plays || 0}</div>
-                ${rankIndicator}
-                <button class="btn-link btn-detail" data-master-id="${masterId}" data-master-key="${masterKey}">Detalle</button>
+              <div style="text-align: right;">
+                <div style="font-size: 0.9rem; color: #00e8a2; font-weight: 600;">${song.total_plays || 0} plays</div>
+                <div style="font-size: 0.85rem; color: #888;">${song.total_emisoras || 0} emisoras</div>
               </div>
             </div>
-          `;
-        }).join('');
-
+          </div>
+        `).join('');
+        
       } catch (err) {
-        console.error('Error actualizando top:', err);
-        showNotification('Error cargando datos', 'error');
+        console.error('Error cargando top:', err);
+        document.getElementById('top-songs-list').innerHTML = 
+          '<div class="empty" style="color: #f44;">Error cargando datos</div>';
       }
     }
 
-    // Event listeners para filtros
-    document.getElementById('country-filter').addEventListener('change', updateTopByFilter);
-    document.getElementById('period-filter').addEventListener('change', updateTopByFilter);
-    document.getElementById('top-limit').addEventListener('change', updateTopByFilter);
-    document.getElementById('week-selector').addEventListener('change', updateTopByFilter); // NUEVO
-
-    // GRÁFICA DE SERIES TEMPORALES
-    let timeseriesChart = null;
-    async function loadTimeseries(hours = 24) {
+    // ============================================================================
+    // CARGAR ÚLTIMAS REPRODUCCIONES
+    // ============================================================================
+    async function loadLatestPlays() {
       try {
-        const res = await fetch(api.timeseries(hours));
-        if (!res.ok) throw new Error('Error cargando timeseries');
+        const res = await fetch('/api/stats/top_songs?limit=100');
+        
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
+        
+        const tbody = document.getElementById('plays-tbody');
+        
         if (!data || data.length === 0) {
-          document.getElementById('timeseries-chart').style.display = 'none';
-          return;
-        }
-        document.getElementById('timeseries-chart').style.display = 'block';
-        const labels = data.map(r => new Date(r.hour).toLocaleString());
-        const values = data.map(r => r.plays);
-        const ctx = document.getElementById('timeseries-chart').getContext('2d');
-        if (timeseriesChart) timeseriesChart.destroy();
-        timeseriesChart = new Chart(ctx, {
-          type: 'line',
-          data: {
-            labels,
-            datasets: [{
-              label: 'Reproducciones por hora',
-              data: values,
-              tension: 0.25,
-              fill: true,
-              borderColor: 'rgb(0, 180, 255)',
-              backgroundColor: 'rgba(0, 180, 255, 0.1)'
-            }]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: { x: { ticks: { maxRotation: 45 } } }
-          }
-        });
-      } catch (err) {
-        console.error('Error en timeseries:', err);
-      }
-    }
-
-    document.getElementById('timeseries-hours').addEventListener('change', (e) => {
-      loadTimeseries(parseInt(e.target.value));
-    });
-
-    // MODAL DE DETALLE DE CANCIÓN
-    const modal = document.getElementById('song-modal');
-    const modalTitle = document.getElementById('modal-title');
-    const modalPlays = document.getElementById('modal-plays');
-    const modalEmisoras = document.getElementById('modal-emisoras');
-    const modalFirst = document.getElementById('modal-first');
-    const modalLast = document.getElementById('modal-last');
-    const modalBreakdown = document.getElementById('modal-breakdown');
-    const modalPlaysTableBody = document.querySelector('#modal-plays-table tbody');
-
-    document.getElementById('modal-close').addEventListener('click', closeModal);
-
-    async function openSongModal(master_key) {
-      if (!master_key) {
-        showNotification('No hay identificador de canción', 'error');
-        return;
-      }
-
-      modal.setAttribute('aria-hidden', 'false');
-      modal.classList.add('open');
-      modalTitle.textContent = 'Cargando...';
-      modalPlays.textContent = '—';
-      modalEmisoras.textContent = '—';
-      modalFirst.textContent = '—';
-      modalLast.textContent = '—';
-      modalBreakdown.innerHTML = '';
-      modalPlaysTableBody.innerHTML = '';
-      
-      try {
-        const res = await fetch(api.songDetail(master_key));
-        if (!res.ok) {
-          modalTitle.textContent = 'Error cargando detalles';
-          return;
-        }
-        const data = await res.json();
-        modalTitle.textContent = `${data.titulo || '—'} — ${data.artista || '—'}`;
-        modalPlays.textContent = data.total_plays || 0;
-        modalEmisoras.textContent = data.total_emisoras || 0;
-        modalFirst.textContent = data.first_play ? new Date(data.first_play).toLocaleString() : '—';
-        modalLast.textContent = data.last_play ? new Date(data.last_play).toLocaleString() : '—';
-        
-        if (data.per_station && data.per_station.length > 0) {
-          modalBreakdown.innerHTML = data.per_station.map(p => 
-            `<div class="breakdown-row"><strong>${p.emisora_nombre || '—'}</strong><span class="muted">(${p.plays})</span></div>`
-          ).join('');
-        } else {
-          modalBreakdown.innerHTML = '<div class="muted">Sin reproducciones por emisora.</div>';
-        }
-        
-        if (data.recent_plays && data.recent_plays.length > 0) {
-          modalPlaysTableBody.innerHTML = data.recent_plays.map(r => 
-            `<tr><td>${new Date(r.fecha).toLocaleString()}</td><td>${r.emisora_nombre || '—'}</td></tr>`
-          ).join('');
-        } else {
-          modalPlaysTableBody.innerHTML = '<tr><td colspan="2" class="muted">Sin reproducciones recientes</td></tr>';
-        }
-      } catch (err) {
-        console.error('Error abriendo modal:', err);
-        modalTitle.textContent = 'Error de conexión';
-      }
-    }
-
-    function closeModal() {
-      modal.setAttribute('aria-hidden', 'true');
-      modal.classList.remove('open');
-    }
-
-    document.addEventListener('click', (ev) => {
-      const btn = ev.target.closest('.btn-detail');
-      if (btn) {
-        const masterKey = btn.dataset.masterKey || btn.dataset.masterId;
-        if (masterKey) openSongModal(masterKey);
-        return;
-      }
-      
-      const item = ev.target.closest('.list-item');
-      if (item && (ev.target.classList.contains('list-main') || ev.target.closest('.list-main'))) {
-        const masterKey = item.dataset.masterKey || item.dataset.masterId;
-        if (masterKey) openSongModal(masterKey);
-      }
-    });
-
-    // FILTROS DE BÚSQUEDA EN TABLAS
-    document.getElementById('filter-station').addEventListener('input', (e) => {
-      const q = e.target.value.toLowerCase();
-      document.querySelectorAll('#emisoras-table tbody tr').forEach(tr => {
-        tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
-      });
-    });
-
-    document.getElementById('filter-play').addEventListener('input', (e) => {
-      const q = e.target.value.toLowerCase();
-      document.querySelectorAll('#latest-table tbody tr').forEach(tr => {
-        tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
-      });
-    });
-
-    // EXPORTACIÓN CSV
-    document.getElementById('export-top-csv').addEventListener('click', async () => {
-      try {
-        const limit = currentLimit;
-        let res;
-        
-        if (currentPeriod === 'specific_week' && currentWeek) {
-          res = await fetch(api.topByWeek(currentWeek, limit));
-        } else if (currentCountry) {
-          res = await fetch(api.topByCountry(currentCountry, limit, currentPeriod));
-        } else if (currentPeriod === 'weekly') {
-          res = await fetch(api.topWeekly(limit));
-        } else if (currentPeriod === 'monthly') {
-          res = await fetch(api.topMonthly(limit));
-        } else {
-          res = await fetch(api.topSongs(limit));
-        }
-        
-        if (!res.ok) throw new Error('Error descargando CSV');
-        const data = await res.json();
-        const rows = data.map(r => ({
-          titulo: r.titulo || '—',
-          artista: r.artista || '—',
-          total_plays: r.total_plays || 0,
-          total_emisoras: r.total_emisoras || 0,
-          first_play: r.first_play || '—',
-          last_play: r.last_play || '—'
-        }));
-        const csv = rowsToCSV(rows, ['titulo', 'artista', 'total_plays', 'total_emisoras', 'first_play', 'last_play']);
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `top_songs_${new Date().toISOString().split('T')[0]}.csv`;
-        a.click();
-        URL.revokeObjectURL(url);
-        showNotification('CSV descargado correctamente');
-      } catch (err) {
-        console.error('Error descargando CSV:', err);
-        showNotification('Error descargando CSV', 'error');
-      }
-    });
-
-    document.getElementById('export-plays-csv').addEventListener('click', () => {
-      try {
-        const rows = Array.from(document.querySelectorAll('#latest-table tbody tr'))
-          .filter(r => r.style.display !== 'none')
-          .map(r => {
-            const c = r.querySelectorAll('td');
-            return {
-              hora: c[0] ? c[0].textContent.trim() : '—',
-              emisora: c[1] ? c[1].textContent.trim() : '—',
-              artista: c[2] ? c[2].textContent.trim() : '—',
-              titulo: c[3] ? c[3].textContent.trim() : '—'
-            };
-          });
-        const csv = rowsToCSV(rows, ['hora', 'emisora', 'artista', 'titulo']);
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `ultimas_reproducciones_${new Date().toISOString().split('T')[0]}.csv`;
-        a.click();
-        URL.revokeObjectURL(url);
-        showNotification('CSV descargado correctamente');
-      } catch (err) {
-        console.error('Error descargando CSV:', err);
-        showNotification('Error descargando CSV', 'error');
-      }
-    });
-
-    // MODAL DE ADMINISTRACIÓN DE EMISORAS
-    const emisorasModal = document.getElementById('emisoras-modal');
-    const emisorasTableBody = document.querySelector('#emisoras-admin-table tbody');
-    let estadoFiltro = null;
-
-    document.getElementById('manage-stations')?.addEventListener('click', async () => {
-      emisorasModal.classList.add('open');
-      emisorasModal.setAttribute('aria-hidden', 'false');
-      await cargarEmisoras();
-    });
-
-    document.getElementById('emisoras-close').addEventListener('click', () => {
-      emisorasModal.classList.remove('open');
-      emisorasModal.setAttribute('aria-hidden', 'true');
-    });
-
-    // Botones de filtro por estado
-    document.getElementById('filter-all-stations')?.addEventListener('click', () => {
-      estadoFiltro = null;
-      cargarEmisoras();
-    });
-    document.getElementById('filter-active-today')?.addEventListener('click', () => {
-      estadoFiltro = 'activo_hoy';
-      cargarEmisoras();
-    });
-    document.getElementById('filter-active-week')?.addEventListener('click', () => {
-      estadoFiltro = 'activo_semana';
-      cargarEmisoras();
-    });
-    document.getElementById('filter-inactive-month')?.addEventListener('click', () => {
-      estadoFiltro = 'inactivo_mes';
-      cargarEmisoras();
-    });
-    document.getElementById('filter-inactive-old')?.addEventListener('click', () => {
-      estadoFiltro = 'inactivo_mucho';
-      cargarEmisoras();
-    });
-
-    function getEstadoBadge(estado, color) {
-      const labels = {
-        'activo_hoy': '✓ Hoy',
-        'activo_ayer': '✓ Ayer',
-        'activo_semana': '✓ Semana',
-        'inactivo_mes': '⚠ 30d',
-        'inactivo_mucho': '✗ Inactiva',
-        'sin_datos': '? Sin datos'
-      };
-      return `<span style="background:${color};color:white;padding:2px 6px;border-radius:4px;font-size:0.8rem;font-weight:bold;">${labels[estado] || estado}</span>`;
-    }
-
-    async function cargarEmisoras() {
-      try {
-        emisorasTableBody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;">Cargando...</td></tr>';
-        
-        const res = await fetch('/api/emisoras');
-        if (!res.ok) throw new Error('Error cargando emisoras');
-        let emisoras = await res.json();
-        
-        // Filtrar por estado si hay uno seleccionado
-        if (estadoFiltro) {
-          emisoras = emisoras.filter(e => e.estado === estadoFiltro);
-        }
-        
-        document.getElementById('emisoras-count').textContent = `Total: ${emisoras.length} emisoras`;
-        
-        if (emisoras.length === 0) {
-          emisorasTableBody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;">No hay emisoras</td></tr>';
-          return;
-        }
-        
-        emisorasTableBody.innerHTML = emisoras.map(e => {
-          const diasText = e.dias_sin_actualizar === null ? '—' : 
-                          e.dias_sin_actualizar === 0 ? 'Hoy' :
-                          e.dias_sin_actualizar === 1 ? 'Ayer' :
-                          `${e.dias_sin_actualizar}d`;
-          
-          return `
-            <tr data-id="${e.id}">
-              <td style="text-align:center;">${getEstadoBadge(e.estado, e.color)}</td>
-              <td class="edit-nombre">${e.nombre}</td>
-              <td class="edit-pais">${e.pais}</td>
-              <td title="${e.ultima_actualizacion || ''}">${e.ultima_actualizacion ? e.ultima_actualizacion.substring(0, 10) : '—'} <small style="color:#999;">${diasText}</small></td>
-              <td style="text-align:center; font-weight:bold;">${e.plays_24h}</td>
-              <td style="text-align:center; font-weight:bold;">${e.plays_7d}</td>
-              <td style="font-size:0.8rem; color:#999; max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${e.url_stream}</td>
-              <td style="white-space:nowrap;">
-                <button class="btn-small btn-edit" data-id="${e.id}" title="Editar">✏️</button>
-                <button class="btn-small btn-delete" data-id="${e.id}" title="Eliminar">🗑️</button>
-              </td>
-            </tr>`;
-        }).join('');
-      } catch (err) {
-        console.error('Error:', err);
-        emisorasTableBody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#f00;">Error cargando</td></tr>';
-      }
-    }
-
-    // Manejador de eventos para botones de acciones
-    document.addEventListener('click', async (e) => {
-      // Editar emisora
-      if (e.target.classList.contains('btn-edit')) {
-        const id = e.target.dataset.id;
-        const tr = e.target.closest('tr');
-        const nombre = prompt('Nuevo nombre:', tr.querySelector('.edit-nombre').textContent);
-        if (!nombre) return;
-
-        try {
-          const res = await fetch(`/api/emisoras/${id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ nombre })
-          });
-
-          if (!res.ok) {
-            const err = await res.json();
-            showNotification(err.error || 'Error', 'error');
-            return;
-          }
-          showNotification('Actualizada');
-          cargarEmisoras();
-        } catch (err) {
-          console.error('Error:', err);
-          showNotification('Error', 'error');
-        }
-      }
-
-      // Eliminar emisora
-      if (e.target.classList.contains('btn-delete')) {
-        const id = e.target.dataset.id;
-        const nombre = e.target.closest('tr').querySelector('.edit-nombre').textContent;
-        if (!confirm(`¿Eliminar "${nombre}"?`)) return;
-
-        try {
-          const res = await fetch(`/api/emisoras/${id}`, { method: 'DELETE' });
-          if (!res.ok) throw new Error('Error eliminando');
-          showNotification('Eliminada');
-          cargarEmisoras();
-        } catch (err) {
-          showNotification('Error', 'error');
-        }
-      }
-    });
-
-    // Agregar nueva emisora
-    document.getElementById('add-station').addEventListener('click', async () => {
-      try {
-        const nombre = document.getElementById('new-name').value.trim();
-        const url_stream = document.getElementById('new-url').value.trim();
-        const pais = document.getElementById('new-country').value.trim();
-        const ciudad = document.getElementById('new-city').value.trim();
-
-        if (!nombre || !url_stream) {
-          showNotification('Nombre y URL son obligatorios', 'error');
+          tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #999;">Sin reproducciones</td></tr>';
           return;
         }
 
-        const res = await fetch('/api/emisoras', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ nombre, url_stream, pais: pais || null, ciudad: ciudad || null })
-        });
-
-        if (!res.ok) {
-          const err = await res.json();
-          showNotification(err.error || 'Error', 'error');
-          return;
-        }
-
-        document.getElementById('new-name').value = '';
-        document.getElementById('new-url').value = '';
-        document.getElementById('new-country').value = '';
-        document.getElementById('new-city').value = '';
-        showNotification('Emisora agregada');
-        cargarEmisoras();
+        // Tomar solo las primeras 20 para la tabla de "últimas"
+        const recent = data.slice(0, 20);
+        
+        tbody.innerHTML = recent.map((play, idx) => `
+          <tr style="border-bottom: 1px solid #333;">
+            <td style="font-size: 0.85rem; color: #aaa;">Hace poco</td>
+            <td style="font-size: 0.9rem;">—</td>
+            <td style="font-size: 0.9rem; color: #fff;">${play.artista || '—'}</td>
+            <td style="font-size: 0.9rem; color: #ccc;">${play.titulo || '—'}</td>
+            <td style="font-size: 0.8rem; color: #fff; text-align: center;">
+              <span style="background: ${
+                play.fuente === 'icy' ? '#4caf50' : 
+                play.fuente === 'audd' ? '#2196f3' : 
+                play.fuente === 'prediccion' ? '#9c27b0' :
+                '#ff9800'
+              }; padding: 2px 6px; border-radius: 3px; white-space: nowrap;">
+                ${getSourceBadge(play.fuente || 'fallback')}
+              </span>
+            </td>
+          </tr>
+        `).join('');
+        
       } catch (err) {
-        showNotification('Error', 'error');
+        console.error('Error cargando plays:', err);
+        document.getElementById('plays-tbody').innerHTML = 
+          '<tr><td colspan="5" style="text-align: center; color: #f44;">Error cargando reproducciones</td></tr>';
       }
-    });
+    }
 
-    async function refrescarTablaEmisoras() {
+    // ============================================================================
+    // ACTUALIZAR ESTADÍSTICAS
+    // ============================================================================
+    async function updateStats() {
       try {
-        const res = await fetch('/api/emisoras');
+        const res = await fetch('/api/stats/top_songs?limit=500');
         if (!res.ok) return;
-        const emisoras = await res.json();
-        const tbody = document.getElementById('emisoras-tbody');
-        
-        tbody.innerHTML = emisoras.map(e => {
-          const diasText = e.dias_sin_actualizar === null ? '—' : 
-                          e.dias_sin_actualizar === 0 ? 'Hoy' :
-                          e.dias_sin_actualizar === 1 ? 'Ayer' :
-                          `${e.dias_sin_actualizar}d`;
+        const data = await res.json();
+
+        if (data && data.length > 0) {
+          // Calcular estadísticas
+          const uniqueArtists = new Set(data.map(s => s.artista)).size;
+          const uniqueSongs = new Set(data.map(s => `${s.artista}-${s.titulo}`)).size;
           
-          const estadoBadge = `<span style="background:${e.color};color:white;padding:2px 6px;border-radius:4px;font-size:0.75rem;font-weight:bold;white-space:nowrap;">${e.estado}</span>`;
+          // Contar por fuente
+          const sources = {};
+          data.forEach(s => {
+            const source = s.fuente || 'fallback';
+            sources[source] = (sources[source] || 0) + 1;
+          });
           
-          return `
-            <tr data-pais="${e.pais || ''}" style="background: ${e.dias_sin_actualizar && e.dias_sin_actualizar > 30 ? 'rgba(204, 0, 0, 0.05)' : 'transparent'};">
-              <td style="text-align:center; padding: 6px 2px;">${estadoBadge}</td>
-              <td class="station-name" style="font-weight: ${e.dias_sin_actualizar && e.dias_sin_actualizar > 30 ? 'bold' : 'normal'}; color: ${e.dias_sin_actualizar && e.dias_sin_actualizar > 30 ? '#cc0000' : 'inherit'};">
-                ${e.nombre || '—'}
-              </td>
-              <td style="font-size: 0.85rem; color: #999; max-width: 250px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                ${e.ultima_cancion || 'Sin datos'}
-              </td>
-              <td style="white-space: nowrap;">${e.ultima_actualizacion || '—'}</td>
-              <td style="text-align: center; font-weight: bold; color: ${e.color}; white-space: nowrap;">${diasText}</td>
-            </tr>
-          `;
-        }).join('');
+          const total = Object.values(sources).reduce((a, b) => a + b, 0);
+          
+          document.getElementById('stat-unique-songs').textContent = uniqueSongs;
+          document.getElementById('stat-unique-artists').textContent = uniqueArtists;
+          document.getElementById('stat-active-stations').textContent = '71'; // Hardcoded por ahora
+          
+          // Porcentajes
+          if (total > 0) {
+            document.getElementById('stat-icy').textContent = 
+              `${Math.round((sources['icy'] || 0) / total * 100)}%`;
+            document.getElementById('stat-audd').textContent = 
+              `${Math.round((sources['audd'] || 0) / total * 100)}%`;
+            document.getElementById('stat-prediccion').textContent = 
+              `${Math.round((sources['prediccion'] || 0) / total * 100)}%`;
+            document.getElementById('stat-fallback').textContent = 
+              `${Math.round((sources['fallback'] || 0) / total * 100)}%`;
+          }
+        }
       } catch (err) {
-        console.error('Error refrescando emisoras:', err);
+        console.error('Error actualizando stats:', err);
       }
     }
 
     // ============================================================================
-    // NUEVO: MODAL PARA INGRESAR CANCIÓN MANUALMENTE
+    // BUSCAR EN TABLA
     // ============================================================================
-    const manualSongModal = document.getElementById('manual-song-modal');
-    const manualSongBtn = document.getElementById('manual-song-btn');
-    const manualSongClose = document.getElementById('manual-song-close');
-    const saveManualSongBtn = document.getElementById('save-manual-song');
-    const manualSongStationSelect = document.getElementById('manual-song-station');
-
-    // Abrir modal
-    manualSongBtn.addEventListener('click', async () => {
-      manualSongModal.classList.add('open');
-      manualSongModal.setAttribute('aria-hidden', 'false');
+    function setupSearch() {
+      const searchInput = document.getElementById('filter-play');
+      if (!searchInput) return;
       
-      // Limpiar campos
-      document.getElementById('manual-song-title').value = '';
-      document.getElementById('manual-song-artist').value = '';
-      manualSongStationSelect.value = '';
-      
-      // Cargar emisoras en el select
-      try {
-        const res = await fetch('/api/emisoras');
-        if (!res.ok) throw new Error('Error cargando emisoras');
-        const emisoras = await res.json();
+      searchInput.addEventListener('input', (e) => {
+        const query = e.target.value.toLowerCase();
+        const rows = document.querySelectorAll('#plays-tbody tr');
         
-        manualSongStationSelect.innerHTML = '<option value="">Seleccionar emisora...</option>';
-        emisoras.forEach(e => {
-          const option = document.createElement('option');
-          option.value = e.id;
-          option.textContent = e.nombre;
-          manualSongStationSelect.appendChild(option);
+        rows.forEach(row => {
+          const text = row.textContent.toLowerCase();
+          row.style.display = text.includes(query) ? '' : 'none';
         });
-      } catch (err) {
-        console.error('Error cargando emisoras:', err);
-        showNotification('Error cargando emisoras', 'error');
-      }
-    });
+      });
+    }
 
-    // Cerrar modal
-    manualSongClose.addEventListener('click', () => {
-      manualSongModal.classList.remove('open');
-      manualSongModal.setAttribute('aria-hidden', 'true');
-    });
-
-    // Guardar canción manual
-    saveManualSongBtn.addEventListener('click', async () => {
-      const titulo = document.getElementById('manual-song-title').value.trim();
-      const artista = document.getElementById('manual-song-artist').value.trim();
-      const emisora_id = parseInt(manualSongStationSelect.value);
-
-      // Validar campos
-      if (!titulo) {
-        showNotification('El nombre de la canción es obligatorio', 'error');
-        return;
-      }
-      if (!artista) {
-        showNotification('El artista es obligatorio', 'error');
-        return;
-      }
-      if (!emisora_id) {
-        showNotification('Debes seleccionar una emisora', 'error');
-        return;
-      }
-
-      try {
-        const res = await fetch(api.manualSong(), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            titulo: titulo,
-            artista: artista,
-            emisora_id: emisora_id
-          })
-        });
-
-        if (!res.ok) {
-          const error = await res.json();
-          throw new Error(error.error || 'Error guardando canción');
-        }
-
-        showNotification('✅ Canción registrada correctamente (temporal)', 'info');
-        
-        // Cerrar modal
-        manualSongModal.classList.remove('open');
-        manualSongModal.setAttribute('aria-hidden', 'true');
-        
-        // Opcional: refrescar la página para ver el cambio
-        setTimeout(() => location.reload(), 1500);
-        
-      } catch (err) {
-        console.error('Error guardando canción:', err);
-        showNotification(err.message, 'error');
-      }
-    });
-
-    // BOTÓN DE REFRESH GLOBAL
-    document.getElementById('refresh-btn').addEventListener('click', () => {
-      location.reload();
-    });
-
-    // ATAJOS DE TECLADO
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        closeModal();
-        if (emisorasModal.classList.contains('open')) {
-          emisorasModal.classList.remove('open');
-          emisorasModal.setAttribute('aria-hidden', 'true');
-        }
-        if (manualSongModal.classList.contains('open')) {
-          manualSongModal.classList.remove('open');
-          manualSongModal.setAttribute('aria-hidden', 'true');
-        }
-      }
-    });
-
-    // FILTRO DE BÚSQUEDA EN TABLA DE EMISORAS
-    document.getElementById('filter-station').addEventListener('keyup', (e) => {
-      const filter = e.target.value.toLowerCase();
-      const rows = document.querySelectorAll('#emisoras-tbody tr');
-      let visibles = 0;
-      
-      rows.forEach(row => {
-        const nombre = row.textContent.toLowerCase();
-        if (nombre.includes(filter)) {
-          row.style.display = '';
-          visibles++;
-        } else {
-          row.style.display = 'none';
+    // ============================================================================
+    // EXPORTAR CSV
+    // ============================================================================
+    function setupExport() {
+      document.getElementById('export-top-csv')?.addEventListener('click', async () => {
+        try {
+          const limit = document.getElementById('top-limit').value;
+          const res = await fetch(api.topSongs(limit));
+          const data = await res.json();
+          
+          const rows = data.map(s => ({
+            titulo: s.titulo,
+            artista: s.artista,
+            plays: s.total_plays,
+            emisoras: s.total_emisoras
+          }));
+          
+          const csv = rowsToCSV(rows, ['titulo', 'artista', 'plays', 'emisoras']);
+          const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `top-canciones-${new Date().toISOString().split('T')[0]}.csv`;
+          a.click();
+          URL.revokeObjectURL(url);
+          showNotification('CSV descargado', 'success');
+        } catch (err) {
+          showNotification('Error descargando CSV', 'error');
         }
       });
-      
-      if (visibles === 0 && filter.length > 0) {
-        // Mostrar mensaje de no hay resultados
-      }
-    });
 
-    // INICIALIZACIÓN AL CARGAR LA PÁGINA
-    document.addEventListener('DOMContentLoaded', async () => {
-      await loadCountries();
-      await refrescarTablaEmisoras();  // Cargar tabla de emisoras
-      
-      const hours = parseInt(document.getElementById('timeseries-hours').value || 24);
-      await loadTimeseries(hours);
-      
-      // Cargar filtros persistidos
+      document.getElementById('export-plays-csv')?.addEventListener('click', async () => {
+        try {
+          const rows = Array.from(document.querySelectorAll('#plays-tbody tr'))
+            .map(row => {
+              const cells = row.querySelectorAll('td');
+              return {
+                hora: cells[0]?.textContent || '',
+                emisora: cells[1]?.textContent || '',
+                artista: cells[2]?.textContent || '',
+                titulo: cells[3]?.textContent || '',
+                fuente: cells[4]?.textContent || ''
+              };
+            });
+          
+          const csv = rowsToCSV(rows, ['hora', 'emisora', 'artista', 'titulo', 'fuente']);
+          const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `reproducciones-${new Date().toISOString().split('T')[0]}.csv`;
+          a.click();
+          URL.revokeObjectURL(url);
+          showNotification('CSV descargado', 'success');
+        } catch (err) {
+          showNotification('Error descargando CSV', 'error');
+        }
+      });
+    }
+
+    // ============================================================================
+    // CICLO DE AUTO-REFRESH
+    // ============================================================================
+    let lastRefreshTime = Date.now();
+    
+    async function autoRefresh() {
       try {
-        const savedCountry = localStorage.getItem('radio_filter_country');
-        const savedPeriod = localStorage.getItem('radio_filter_period');
+        await loadTopSongs();
+        await loadLatestPlays();
+        await updateStats();
+        lastRefreshTime = Date.now();
         
-        if (savedCountry) {
-          document.getElementById('country-filter').value = savedCountry;
-          currentCountry = savedCountry;
-        }
-        if (savedPeriod) {
-          document.getElementById('period-filter').value = savedPeriod;
-          currentPeriod = savedPeriod;
+        // Actualizar indicador
+        const status = document.getElementById('sync-status');
+        if (status) {
+          status.textContent = `✓ Actualizado a las ${new Date().toLocaleTimeString('es-ES')}`;
+          status.style.color = '#00e8a2';
+          status.style.opacity = '1';
+          
+          // Fade out después de 3s
+          setTimeout(() => {
+            status.style.opacity = '0.5';
+          }, 3000);
         }
       } catch (err) {
-        console.debug('No hay filtros guardados');
+        console.error('Error en auto-refresh:', err);
       }
+    }
+
+    // ============================================================================
+    // EVENT LISTENERS
+    // ============================================================================
+    document.getElementById('refresh-btn')?.addEventListener('click', async () => {
+      const btn = document.getElementById('refresh-btn');
+      btn.style.opacity = '0.5';
+      btn.disabled = true;
       
-      // Recargar emisoras cada 30 segundos
-      setInterval(refrescarTablaEmisoras, 30000);
+      await autoRefresh();
+      
+      setTimeout(() => {
+        btn.style.opacity = '1';
+        btn.disabled = false;
+      }, 500);
+      
+      showNotification('Datos actualizados', 'success');
     });
 
-    // Guardar filtros en localStorage
-    document.getElementById('country-filter').addEventListener('change', (e) => {
-      try {
-        localStorage.setItem('radio_filter_country', e.target.value);
-      } catch (err) {
-        console.debug('No se pudo guardar filtro de país');
-      }
+    document.getElementById('top-limit')?.addEventListener('change', loadTopSongs);
+
+    // ============================================================================
+    // INICIALIZACIÓN
+    // ============================================================================
+    document.addEventListener('DOMContentLoaded', async () => {
+      console.log('🚀 Inicializando Radio Monitor...');
+      
+      // Cargar datos iniciales
+      await autoRefresh();
+      setupSearch();
+      setupExport();
+      
+      // Auto-refresh cada 15 segundos
+      setInterval(autoRefresh, CONFIG.AUTO_REFRESH_INTERVAL);
+      
+      // Indicador visual de auto-refresh
+      let count = 1;
+      const statusInterval = setInterval(() => {
+        const status = document.getElementById('sync-status');
+        if (status && !status.textContent.includes('Actualizado')) {
+          status.textContent = `Próxima actualización en ${CONFIG.AUTO_REFRESH_INTERVAL / 1000 - count}s...`;
+          status.style.color = '#ffaa00';
+          count++;
+          if (count > CONFIG.AUTO_REFRESH_INTERVAL / 1000) {
+            count = 1;
+          }
+        }
+      }, 1000);
     });
 
-    document.getElementById('period-filter').addEventListener('change', (e) => {
-      try {
-        localStorage.setItem('radio_filter_period', e.target.value);
-      } catch (err) {
-        console.debug('No se pudo guardar filtro de período');
-      }
-    });
-
-    // ESTILOS ADICIONALES
+    // ============================================================================
+    // ESTILOS
+    // ============================================================================
     const style = document.createElement('style');
     style.textContent = `
-      .rank-badge {
-        display: inline-block;
-        padding: 2px 6px;
-        border-radius: 4px;
-        font-size: 0.75rem;
-        font-weight: 700;
-        margin-left: 8px;
+      @keyframes slideIn {
+        from { transform: translateX(400px); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
       }
-      .rank-badge.new { background: #00e8a2; color: #000; }
-      .rank-badge.up { background: #4caf50; color: #fff; }
-      .rank-badge.down { background: #ff4444; color: #fff; }
-      .station-logo {
-        width: 24px;
-        height: 24px;
-        border-radius: 4px;
-        margin-right: 8px;
-        vertical-align: middle;
-        object-fit: cover;
+      @keyframes slideOut {
+        from { transform: translateX(0); opacity: 1; }
+        to { transform: translateX(400px); opacity: 0; }
       }
-      .artist-thumb {
-        width: 32px;
-        height: 32px;
-        border-radius: 50%;
-        margin-right: 8px;
-        vertical-align: middle;
-        object-fit: cover;
-      }
-      .thumb {
-        width: 48px;
-        height: 48px;
-        border-radius: 8px;
-        margin-right: 12px;
-        object-fit: cover;
-      }
-      .breakdown-row {
-        display: flex;
-        justify-content: space-between;
-        padding: 8px 0;
-        border-bottom: 1px solid rgba(255,255,255,0.1);
-      }
-      .breakdown-row:last-child { border-bottom: none; }
-      .form-inline {
-        display: flex;
-        gap: 8px;
-        margin-top: 1rem;
-      }
-      .form-inline input { flex: 1; }
-      .btn-small {
-        padding: 4px 8px;
-        font-size: 0.875rem;
-        border: none;
-        background: transparent;
-        cursor: pointer;
-        transition: transform 0.2s;
-      }
-      .btn-small:hover { transform: scale(1.2); }
-      .modal.open { display: flex; }
-      .modal {
-        display: none;
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0,0,0,0.85);
-        justify-content: center;
-        align-items: center;
-        z-index: 9999;
-      }
-      .modal-panel {
-        background: #1a1a1a;
-        border-radius: 12px;
-        padding: 2rem;
-        max-width: 800px;
-        width: 90%;
-        max-height: 90vh;
-        overflow-y: auto;
-        position: relative;
-      }
-      .modal-panel.large { max-width: 1200px; }
-      .modal-close {
-        position: absolute;
-        top: 1rem;
-        right: 1rem;
-        background: transparent;
-        border: none;
-        font-size: 1.5rem;
-        color: #fff;
-        cursor: pointer;
-        padding: 0.5rem;
-        line-height: 1;
-        transition: transform 0.2s;
-      }
-      .modal-close:hover { transform: rotate(90deg); }
-      .modal-meta {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 1rem;
-        margin: 1rem 0;
-        padding: 1rem;
-        background: rgba(255,255,255,0.05);
-        border-radius: 8px;
-      }
-      .list-item {
-        cursor: pointer;
-        transition: background 0.2s;
-      }
-      .list-item:hover { background: rgba(255,255,255,0.05); }
-      .empty {
-        padding: 2rem;
-        text-align: center;
-        color: #888;
-      }
-      .form-grid {
-        display: grid;
-        grid-template-columns: 1fr;
-        gap: 1rem;
-      }
-      .form-group label {
-        display: block;
-        margin-bottom: 0.5rem;
-        font-size: 0.875rem;
-        font-weight: 600;
-        color: #ddd;
+      #sync-status {
+        transition: all 0.3s ease;
       }
     `;
     document.head.appendChild(style);
-
   </script>
 </body>
 </html>

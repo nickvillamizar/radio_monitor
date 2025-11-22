@@ -639,6 +639,7 @@ def api_top_songs():
         db.session.query(
             Cancion.titulo,
             Cancion.artista,
+            Cancion.fuente,
             func.count(Cancion.id).label("plays"),
             func.min(Cancion.fecha_reproduccion).label("first_play"),
             func.max(Cancion.fecha_reproduccion).label("last_play"),
@@ -647,7 +648,7 @@ def api_top_songs():
             Cancion.artista != "Desconocido",
             func.length(Cancion.titulo) >= 3
         )
-        .group_by(Cancion.titulo, Cancion.artista)
+        .group_by(Cancion.titulo, Cancion.artista, Cancion.fuente)
         .order_by(desc("plays"))
         .limit(limit)
         .all()
@@ -676,6 +677,7 @@ def api_top_songs():
             "id": None,
             "titulo": r.titulo,
             "artista": r.artista,
+            "fuente": r.fuente or "icy",
             "total_plays": int(r.plays),
             "total_emisoras": count_distinct_emisoras(r.titulo, r.artista),
             "first_play": r.first_play.isoformat() if r.first_play else None,

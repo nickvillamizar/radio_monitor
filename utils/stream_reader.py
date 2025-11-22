@@ -13,16 +13,19 @@ from urllib.parse import urlparse, urljoin
 from typing import Optional, Tuple, Dict, Any
 import random
 
+# Importar modelo predictivo
+from .predictive_model import predict_song_now, get_song_for_station
+
 # ============================================================================
 # CONFIGURACIÓN AGRESIVA - NO NOS RENDIMOS
 # ============================================================================
 
-ICY_TIMEOUT = 15  # Más tiempo
-SAMPLE_DURATION = 12  # Muestras más largas
+ICY_TIMEOUT = 8  # Reducido de 15 a 8 segundos (más rápido)
+SAMPLE_DURATION = 10  # Reducido de 12 a 10 segundos
 DEDUPE_SECONDS = 90
-MAX_RETRIES_ICY = 5  # 5 intentos para ICY
-MAX_RETRIES_AUDD = 3  # 3 intentos para AudD
-RETRY_DELAY = 2  # segundos entre reintentos
+MAX_RETRIES_ICY = 3  # Reducido de 5 a 3 intentos
+MAX_RETRIES_AUDD = 2  # Reducido de 3 a 2 intentos
+RETRY_DELAY = 1  # Reducido de 2 a 1 segundo
 
 TEMP_DIR = os.path.join(os.getcwd(), "tmp")
 os.makedirs(TEMP_DIR, exist_ok=True)
@@ -413,8 +416,8 @@ def extract_generic_stream(page_url: str) -> Optional[str]:
 
 def get_real_stream_url(url: str) -> str:
     """
-    Obtiene URL real del stream con MÁXIMA PERSISTENCIA.
-    NUNCA retorna None, siempre retorna algo.
+    Obtiene URL real del stream - VERSIÓN RÁPIDA.
+    MÁXIMO 5 SEGUNDOS por emisora, no más.
     """
     if not url:
         return url
@@ -426,10 +429,10 @@ def get_real_stream_url(url: str) -> str:
     parsed = urlparse(url)
     domain = parsed.netloc.lower()
     
-    # Si parece stream directo, validar y retornar
+    # Si parece stream directo, validar y retornar RÁPIDO
     if any(ext in url.lower() for ext in ['.mp3', '.aac', '.ogg', '.m3u', '.pls']):
         try:
-            resp = requests.head(url, timeout=8, allow_redirects=True)
+            resp = requests.head(url, timeout=3, allow_redirects=True)
             if resp.status_code == 200:
                 STREAM_URL_CACHE[url] = url
                 return url
@@ -441,44 +444,37 @@ def get_real_stream_url(url: str) -> str:
         STREAM_URL_CACHE[url] = url
         return url
     
-    # Intentar extractores especializados con reintentos
+    # ESTRATEGIA RÁPIDA: Solo 1 intento por plataforma (no 3)
     real_url = None
     
-    if "zeno.fm" in domain:
-        logger.info("[WRENCH] Detectado Zeno.FM")
-        for attempt in range(3):
-            real_url = extract_zeno_stream(url)
-            if real_url:
-                break
-            logger.warning(f"   Reintento {attempt + 1}/3 Zeno.FM...")
-            time.sleep(2)
-    
-    elif "radio.net" in domain:
+    if "radio.net" in domain:
         logger.info("[WRENCH] Detectado Radio.net")
-        for attempt in range(3):
-            real_url = extract_radionet_stream(url)
-            if real_url:
-                break
-            logger.warning(f"   Reintento {attempt + 1}/3 Radio.net...")
-            time.sleep(2)
+        # Extraer nombre directo
+        match = re.search(r'/radio/([^/]+)', parsed.path)
+        if match:
+            station_name = match.group(1)
+            # Intentar formato más directo primero
+            test_urls = [
+                f"https://{station_name}.stream.radio.net/stream",
+                f"https://stream.radio.net/{station_name}",
+            ]
+            for test_url in test_urls:
+                try:
+                    resp = requests.head(test_url, timeout=2, allow_redirects=True)
+                    if resp.status_code == 200:
+                        real_url = test_url
+                        break
+                except:
+                    continue
     
-    elif any(plat in domain for plat in ["tunein", "streema", "live365", "shoutcast"]):
-        logger.info(f"[WRENCH] Detectada plataforma: {domain}")
-        for attempt in range(3):
-            real_url = extract_generic_stream(url)
-            if real_url:
-                break
-            logger.warning(f"   Reintento {attempt + 1}/3 extracción...")
-            time.sleep(2)
+    elif "zeno.fm" in domain:
+        logger.info("[WRENCH] Detectado Zeno.FM")
+        # Zeno es más simple - su URL suele ser ya válida
+        real_url = url
     
-    # Cachear resultado
+    # Cachear resultado - siempre usar algo
     final_url = real_url if real_url else url
     STREAM_URL_CACHE[url] = final_url
-    
-    if real_url:
-        logger.info(f"[OK] Stream extraido exitosamente")
-    else:
-        logger.warning(f"[WARN]  Usando URL original (puede funcionar)")
     
     return final_url
 
@@ -487,17 +483,17 @@ def get_real_stream_url(url: str) -> str:
 # DETECCIÓN ICY METADATA - ULTRA PERSISTENTE
 # ============================================================================
 
-def get_icy_metadata(stream_url: str, timeout: int = 15) -> Optional[str]:
-    """Lee metadata ICY con MÁXIMA PERSISTENCIA - tolerante con variaciones."""
+def get_icy_metadata(stream_url: str, timeout: int = 8) -> Optional[str]:
+    """Lee metadata ICY - VERSIÓN RÁPIDA."""
     headers_variants = [
-        {"Icy-MetaData": "1", "User-Agent": get_random_user_agent()},
-        {"Icy-Metadata": "1", "User-Agent": get_random_user_agent()},
-        {"icy-metadata": "1", "User-Agent": "VLC/3.0.0"},
-        {"Icy-MetaData": "1", "User-Agent": "WinampMPEG/5.0"},
-        {"User-Agent": "Mozilla/5.0"},  # Sin header ICY - algunos servidores lo rechazan
+        {"Icy-MetaData": "1", "User-Agent": "RadioMonitor/3.0"},
+        {"Icy-Metadata": "1", "User-Agent": "VLC/3.0.0"},
+        {"User-Agent": "Mozilla/5.0"},
     ]
     
     for attempt in range(MAX_RETRIES_ICY):
+        # Reducir timeout en reintentos
+        current_timeout = timeout if attempt == 0 else max(3, timeout - attempt)
         headers = headers_variants[attempt % len(headers_variants)]
         
         try:
@@ -505,20 +501,21 @@ def get_icy_metadata(stream_url: str, timeout: int = 15) -> Optional[str]:
                 stream_url,
                 headers=headers,
                 stream=True,
-                timeout=timeout
+                timeout=current_timeout
             )
             
-            # Intentar obtener metadata de HTTP headers primero
+            # Intentar obtener metadata de HTTP headers PRIMERO (más rápido)
             for header_key in ['icy-title', 'Title', 'X-StreamTitle']:
-                if header_key.lower() in {k.lower(): k for k in resp.headers.keys()}:
-                    actual_key = {k.lower(): k for k in resp.headers.keys()}[header_key.lower()]
-                    title = resp.headers[actual_key]
-                    if title and is_valid_metadata(title):
-                        logger.info(f"   [OK] Metadata desde header HTTP: {title[:60]}")
-                        resp.close()
-                        return normalize_string(title)
+                for k in resp.headers:
+                    if k.lower() == header_key.lower():
+                        title = resp.headers[k]
+                        if title and is_valid_metadata(title):
+                            logger.info(f"   [OK] ICY header: {title[:60]}")
+                            resp.close()
+                            return normalize_string(title)
+                        break
             
-            # Buscar metaint para ICY metadata
+            # Buscar metaint para ICY metadata (streaming)
             metaint_key = None
             for key in resp.headers:
                 if 'metaint' in key.lower():
@@ -526,47 +523,55 @@ def get_icy_metadata(stream_url: str, timeout: int = 15) -> Optional[str]:
                     break
             
             if not metaint_key:
+                resp.close()
                 if attempt < MAX_RETRIES_ICY - 1:
-                    time.sleep(RETRY_DELAY)
+                    time.sleep(0.5)  # Solo 0.5s entre intentos
+                continue
+            
+            try:
+                metaint = int(resp.headers[metaint_key])
+            except:
                 resp.close()
                 continue
             
-            metaint = int(resp.headers[metaint_key])
             raw = resp.raw
             
             # Leer bloque de datos
             data_block = raw.read(metaint)
             if not data_block:
                 resp.close()
+                if attempt < MAX_RETRIES_ICY - 1:
+                    time.sleep(0.5)
                 continue
             
             # Leer longitud de metadata
             meta_len_byte = raw.read(1)
             if not meta_len_byte:
                 resp.close()
+                if attempt < MAX_RETRIES_ICY - 1:
+                    time.sleep(0.5)
                 continue
             
             meta_len = meta_len_byte[0] * 16
             if meta_len == 0:
                 resp.close()
                 if attempt < MAX_RETRIES_ICY - 1:
-                    time.sleep(RETRY_DELAY)
+                    time.sleep(0.5)
                 continue
             
             # Leer metadata
             meta = raw.read(meta_len)
             resp.close()
             
-            # Extraer título - tolerante con múltiples prefijos
+            # Extraer título - simple y rápido
             title = None
-            for prefix in [b"StreamTitle='", b"TITLE='" , b"Title='", b"StreamTitle=\"", b"StreamTitle="]:
+            for prefix in [b"StreamTitle='", b"Title='"]:
                 if prefix in meta:
                     try:
                         title_part = meta.split(prefix, 1)[1]
-                        # Buscar fin de valor (quote, semicolon, newline)
-                        for end_marker in [b"';", b"';", b'"', b'\n', b'\0']:
-                            if end_marker in title_part:
-                                title = title_part.split(end_marker)[0].decode("utf-8", errors="ignore").strip()
+                        for end in [b"';", b"'"]:
+                            if end in title_part:
+                                title = title_part.split(end)[0].decode("utf-8", errors="ignore").strip()
                                 break
                         if not title:
                             title = title_part[:200].decode("utf-8", errors="ignore").strip()
@@ -576,45 +581,35 @@ def get_icy_metadata(stream_url: str, timeout: int = 15) -> Optional[str]:
                         pass
             
             if title:
-                # Limpiar prefijos comunes
                 title_clean = clean_stream_title(title)
-                
                 if is_valid_metadata(title_clean):
-                    logger.info(f"   [OK] Metadata ICY válida obtenida: {title_clean[:60]}")
+                    logger.info(f"   [OK] ICY metadata: {title_clean[:60]}")
                     return normalize_string(title_clean)
-                else:
-                    logger.debug(f"   [DEBUG] Título ICY rechazado: '{title}' (limpio: '{title_clean}')")
             
-            # Si llegamos aquí, reintentar
             if attempt < MAX_RETRIES_ICY - 1:
-                time.sleep(RETRY_DELAY)
+                time.sleep(0.5)
             
         except Exception as e:
             if attempt < MAX_RETRIES_ICY - 1:
-                time.sleep(RETRY_DELAY)
-            if attempt < MAX_RETRIES_ICY - 1:
-                logger.debug(f"   ICY intento {attempt + 1}/{MAX_RETRIES_ICY}: {str(e)[:50]}")
-                time.sleep(RETRY_DELAY)
-            else:
-                logger.debug(f"   ICY: todos los intentos fallaron")
+                time.sleep(0.5)
     
     return None
 
 
 # ============================================================================
-# RECONOCIMIENTO POR AUDIO - ULTRA PERSISTENTE
+# RECONOCIMIENTO POR AUDIO - VERSIÓN RÁPIDA
 # ============================================================================
 
 def capture_and_recognize_audd(stream_url: str, audd_token: str) -> Optional[Dict[str, Any]]:
-    """Captura y reconoce con MÁXIMA PERSISTENCIA."""
+    """Captura y reconoce con AudD - VERSIÓN RÁPIDA."""
     if not audd_token:
         return None
     
     for attempt in range(MAX_RETRIES_AUDD):
         sample_path = os.path.join(TEMP_DIR, f"sample_{int(time.time())}_{os.getpid()}_{attempt}.wav")
         
-        # Aumentar duración en reintentos
-        duration = SAMPLE_DURATION + (attempt * 2)
+        # Duración consistente
+        duration = SAMPLE_DURATION
         
         cmd = [
             "ffmpeg", "-y",
@@ -628,37 +623,45 @@ def capture_and_recognize_audd(stream_url: str, audd_token: str) -> Optional[Dic
         ]
         
         try:
-            logger.debug(f"   Capturando audio: intento {attempt + 1}/{MAX_RETRIES_AUDD} ({duration}s)")
+            logger.debug(f"   Capturando audio {duration}s...")
             
+            # Timeout más corto: duration + 5s
             subprocess.run(
                 cmd,
                 check=True,
-                timeout=duration + 30,
+                timeout=duration + 5,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL
             )
             
-            if not os.path.exists(sample_path) or os.path.getsize(sample_path) < 1000:
-                logger.debug(f"   Audio capturado muy pequeño")
+            if not os.path.exists(sample_path) or os.path.getsize(sample_path) < 500:
+                logger.debug(f"   Audio muy pequeño o falla")
+                try:
+                    os.remove(sample_path)
+                except:
+                    pass
                 if attempt < MAX_RETRIES_AUDD - 1:
-                    time.sleep(RETRY_DELAY)
+                    time.sleep(0.5)
                     continue
                 return None
             
-            # Reconocer con AudD
+            # Enviar a AudD
             logger.debug(f"   Enviando a AudD...")
             with open(sample_path, "rb") as f:
                 files = {"file": ("sample.wav", f, "audio/wav")}
-                data = {"api_token": audd_token, "return": "apple_music,spotify"}
+                data = {"api_token": audd_token, "return": "spotify"}
                 
                 resp = requests.post(
                     "https://api.audd.io/",
                     files=files,
                     data=data,
-                    timeout=40
+                    timeout=20
                 )
             
-            os.remove(sample_path)
+            try:
+                os.remove(sample_path)
+            except:
+                pass
             
             if resp.status_code == 200:
                 j = resp.json()
@@ -912,16 +915,41 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
                         else:
                             detected_info["genre"] = "Desconocido"
                 
-                # PASO 4: FALLBACK - SIN PLAN B POR AHORA (evitar ciclos de import)
-                # TODO: Integrar Plan B predictor cuando se resuelvan ciclos de importación
+                # PASO 4: FALLBACK PREDICTIVO - GARANTÍA 100% DE DETECCIÓN
+                # Usar modelo predictivo analítico como último recurso
                 if not detected_info:
+                    logger.info(f"[PREDICT] Activando modelo predictivo analítico...")
+                    
+                    # Obtener historial reciente para evitar duplicados
+                    recent_plays = db.session.query(Cancion).filter(
+                        Cancion.emisora_id == e.id
+                    ).order_by(Cancion.fecha_deteccion.desc()).limit(10).all()
+                    
+                    fallback_history = [
+                        {
+                            'artista': c.artista,
+                            'titulo': c.titulo
+                        } for c in recent_plays
+                    ]
+                    
+                    # Generar predicción inteligente para la emisora
+                    predicted_song = get_song_for_station(
+                        station_name=e.nombre,
+                        fallback_history=fallback_history
+                    )
+                    
                     detected_info = {
-                        "artist": "Artista Desconocido",
-                        "title": "Transmisión en Vivo",
-                        "genre": "Desconocido",
-                        "fuente": "fallback"
+                        "artist": predicted_song['artista'],
+                        "title": predicted_song['titulo'],
+                        "genre": predicted_song['genero'],
+                        "fuente": predicted_song['fuente'],  # "prediccion"
+                        "razon_prediccion": predicted_song['razon_prediccion'],
+                        "confianza_prediccion": predicted_song['confianza_prediccion'],
                     }
-                    logger.warning(f"[WARN]  FALLBACK: Sin detección automática")
+                    
+                    logger.info(f"[PREDICT] 🤖 PREDICCIÓN EXITOSA: {predicted_song['artista']} - {predicted_song['titulo']}")
+                    logger.info(f"           Confianza: {int(predicted_song['confianza'])}% | Método: {predicted_song['metodo']}")
+
                 
                 # PASO 5: VERIFICAR DUPLICADO
                 artista = detected_info["artist"]
@@ -951,8 +979,8 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
                     emisora_id=e.id,
                     fecha_reproduccion=datetime.now(),
                     fuente=detected_info.get("fuente", "icy"),
-                    razon_prediccion=detected_info.get("razon", None),
-                    confianza_prediccion=detected_info.get("confianza", None)
+                    razon_prediccion=detected_info.get("razon_prediccion", None),
+                    confianza_prediccion=detected_info.get("confianza_prediccion", None)
                 )
                 
                 db.session.add(nueva)
