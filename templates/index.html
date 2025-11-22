@@ -15,7 +15,10 @@
         <p class="subtitle">Monitoreo automático — Estadísticas y última actividad</p>
       </div>
       <div class="header-actions">
-        <div class="small-muted">Intervalo: {{ config.MONITOR_INTERVAL }}s</div>
+        <div class="small-muted" style="display: flex; align-items: center; gap: 0.5rem;">
+          <span style="display: inline-block; width: 6px; height: 6px; background: #00e8a2; border-radius: 50%; animation: pulse 1.5s infinite;"></span>
+          Intervalo: {{ config.MONITOR_INTERVAL }}s
+        </div>
         <button id="refresh-btn" class="btn-outline">Actualizar ahora</button>
         <!-- NUEVO: Botón para ingresar canción manualmente -->
         <button id="manual-song-btn" class="btn-primary">➕ Ingresar canción</button>
@@ -176,7 +179,7 @@
         <div class="table-wrapper small-scroll">
           <table class="table-compact" id="latest-table">
             <thead>
-              <tr>
+              <tr style="background: rgba(0, 232, 162, 0.08);">
                 <th>Hora</th>
                 <th>Emisora</th>
                 <th>Artista</th>
@@ -185,9 +188,9 @@
             </thead>
             <tbody>
               {% for s in ultimas %}
-                <tr data-emisora-id="{{ s.emisora_id }}">
-                  <td>{{ s.fecha_reproduccion.strftime('%Y-%m-%d %H:%M:%S') }}</td>
-                  <td>
+                <tr data-emisora-id="{{ s.emisora_id }}" style="border-bottom: 1px solid rgba(255,255,255,0.05); transition: background 0.2s;">
+                  <td style="padding: 0.75rem 0.5rem; font-size: 0.875rem; color: #aaa;">{{ s.fecha_reproduccion.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                  <td style="padding: 0.75rem 0.5rem; color: #ddd;">
                     {% set emis = s.emisora_id %}
                     {% for e in emisoras %}
                       {% if e.id == emis %}
@@ -195,12 +198,12 @@
                       {% endif %}
                     {% endfor %}
                   </td>
-                  <td>
+                  <td style="padding: 0.75rem 0.5rem;">
                     <img class="artist-thumb" src="/image/artist/{{ (s.artista|urlencode) }}" alt="Artista" loading="lazy"
-                         onerror="this.onerror=null; this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2232%22 height=%2232%22%3E%3Ccircle cx=%2216%22 cy=%2216%22 r=%2216%22 fill=%22%23444%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23999%22 font-size=%2212%22%3E👤%3C/text%3E%3C/svg%3E';">
-                    {{ s.artista or '—' }}
+                         onerror="this.onerror=null; this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2232%22 height=%2232%22%3E%3Ccircle cx=%2216%22 cy=%2216%22 r=%2216%22 fill=%22%23444%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23999%22 font-size=%2212%22%3E👤%3C/text%3E%3C/svg%3E';" style="margin-right: 0.5rem;">
+                    <span style="color: #00e8a2; font-weight: 500;">{{ s.artista or '—' }}</span>
                   </td>
-                  <td class="play-title">{{ s.titulo or '—' }}</td>
+                  <td class="play-title" style="padding: 0.75rem 0.5rem; color: #ccc;">{{ s.titulo or '—' }}</td>
                 </tr>
               {% endfor %}
             </tbody>
@@ -1246,6 +1249,10 @@
         font-size: 0.875rem;
         font-weight: 600;
         color: #ddd;
+      }
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
       }
     `;
     document.head.appendChild(style);
