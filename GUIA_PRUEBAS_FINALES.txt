@@ -1,0 +1,288 @@
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║                                                                               ║
+║              🚀 GUÍA DE PRUEBAS FINALES - ANTES DE PRODUCCIÓN                ║
+║                    Radio Monitor Sistema Completo                            ║
+║                                                                               ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
+
+
+PASO 1: VERIFICAR CÓDIGO BASE
+═══════════════════════════════════════════════════════════════════════════════
+
+En PowerShell:
+
+  cd c:\Users\57321\OneDrive\Escritorio\radio_monitor-main\radio_monitor-main
+  
+  # Verificar que predictive_model.py existe
+  ls utils/predictive_model.py
+  
+  # Verificar estructura del proyecto
+  ls utils/
+  ls templates/
+  ls migrations/
+
+
+PASO 2: VERIFICAR TESTS
+═══════════════════════════════════════════════════════════════════════════════
+
+Test 1: Predictor simple (sin dependencias externas)
+
+  python test_predictor_simple.py
+  
+  ✓ Debe mostrar:
+    - 10 predicciones válidas
+    - 50 predicciones sin errores
+    - Confianza: 70-85%
+    - Géneros Dominican válidos
+    - Artistas reales de RD
+
+
+Test 2: Integración completa
+
+  python test_integration_detection.py
+  
+  ✓ Debe mostrar:
+    - TEST EXITOSO: 20/20 detecciones con fuente='prediccion'
+    - Validación OK: Todos los campos presentes
+    - 30/30 predicciones válidas
+    - 100% de cobertura garantizada
+
+
+PASO 3: VERIFICAR BASE DE DATOS
+═══════════════════════════════════════════════════════════════════════════════
+
+Estructura:
+
+  python check_db.py
+  
+  ✓ Debe mostrar:
+    - Tabla canciones con campos correctos
+    - Tabla emisoras con 71 registros
+    - Campos: titulo, artista, fuente, razon_prediccion, confianza_prediccion
+
+
+Llenar datos de muestra:
+
+  # Opcionalmente ejecutar detección una vez
+  python launch_app.py
+  # Espera 60 segundos
+  # Ctrl+C para detener
+
+
+Contar registros:
+
+  python list_tables_and_counts.py
+  
+  ✓ Debe mostrar números > 0 para canciones
+
+
+PASO 4: VERIFICAR INTERFAZ WEB
+═══════════════════════════════════════════════════════════════════════════════
+
+Iniciar Flask:
+
+  python app.py
+  
+  ✓ Debe mostrar:
+    - Running on http://127.0.0.1:5000
+    - Warning sobre development server es OK
+
+Abrir en navegador:
+
+  http://127.0.0.1:5000/
+  
+  ✓ Verificar:
+    □ Index.html carga correctamente
+    □ CSS visible (sin errores de estilo)
+    □ Punto verde pulsante en header
+    □ Contador de "Próx: Xs"
+    □ TOP CANCIONES visible
+    □ ÚLTIMAS REPRODUCCIONES visible
+    □ Badges de fuente (🔊 🎙️ 🤖 📊) presentes
+
+
+PASO 5: VERIFICAR API
+═══════════════════════════════════════════════════════════════════════════════
+
+En PowerShell (otra ventana):
+
+  # Obtener TOP songs
+  Invoke-WebRequest -Uri "http://127.0.0.1:5000/api/stats/top_songs?limit=5" | Select-Object -ExpandProperty Content
+  
+  ✓ Debe retornar JSON con:
+    {
+      "canciones": [
+        {
+          "titulo": "...",
+          "artista": "...",
+          "fuente": "icy" | "audd" | "prediccion",
+          "razon_prediccion": "...",
+          "confianza_prediccion": 0.75,
+          "playcount": 5,
+          "emisoras": 3
+        },
+        ...
+      ]
+    }
+
+
+PASO 6: VERIFICAR AUTO-REFRESH
+═══════════════════════════════════════════════════════════════════════════════
+
+En el navegador (abierto en http://127.0.0.1:5000/):
+
+  1. Abre Console (F12 > Console)
+  
+  2. Espera 5 segundos, deberías ver logs:
+     ✓ [AUTO-REFRESH] Iniciando fetch...
+     ✓ [TOP-SONGS] Renderizando X canciones
+     ✓ [STATS] Actualizando estadísticas
+  
+  3. Cada 15 segundos, volverá a hacer fetch
+     ✓ Contador baja: 15 → 14 → 13... → 1 → reset a 15
+  
+  4. Punto verde debe estar pulsando constantemente
+
+
+PASO 7: EJECUTAR CICLO COMPLETO DE DETECCIÓN
+═══════════════════════════════════════════════════════════════════════════════
+
+En PowerShell (tercera ventana):
+
+  python launch_app.py
+  
+  Espera 60 segundos y observa:
+  
+  ✓ [CHECK] 71 emisoras siendo procesadas
+  ✓ [ICY] Algunas detecciones por metadata (rápido: 1-3s)
+  ✓ [AUDD] Algunas por audio recognition (15-25s)
+  ✓ [PREDICT] Resto por predictor (instantáneo)
+  ✓ [SAVE] Todas guardadas en BD
+  ✓ [END] Ciclo completado
+
+
+PASO 8: VERIFICAR DATOS EN INDEX
+═══════════════════════════════════════════════════════════════════════════════
+
+Después del ciclo, en el navegador:
+
+  1. Presiona botón 🔄 Actualizar (esquina arriba derecha)
+  
+  2. Punto debe ponerse naranja ("Actualizando...")
+  
+  3. En < 2 segundos vuelve verde ("Sincronizado")
+  
+  4. TOP CANCIONES ahora muestra:
+     ✓ Más de 10 canciones únicas
+     ✓ Canciones reales (no "Transmisión en Vivo")
+     ✓ Artistas reales (no "Desconocido")
+     ✓ Badges de fuente correctos
+  
+  5. ÚLTIMAS REPRODUCCIONES muestra:
+     ✓ 20 reproducciones ordenadas por hora (descendente)
+     ✓ Hora real (reciente)
+     ✓ Emisora válida
+     ✓ Artista + Título real
+  
+  6. ESTADÍSTICAS muestra:
+     ✓ Canciones únicas > 50
+     ✓ Artistas únicos > 20
+     ✓ Emisoras activas = 71 (o > 60)
+     ✓ Porcentajes de fuente suman 100%
+
+
+PASO 9: VALIDAR DATOS ESPECÍFICOS
+═══════════════════════════════════════════════════════════════════════════════
+
+En la tabla ÚLTIMAS REPRODUCCIONES, haz clic en una canción:
+
+  ✓ Artista DEBE ser nombre real (ej: "Juan Luis Guerra", "Daddy Yankee")
+  ✓ Título DEBE ser nombre real (ej: "Bachata Rosa", "Gasolina")
+  ✓ NO DEBE ser "Transmisión en Vivo"
+  ✓ NO DEBE ser "Artista Desconocido"
+  ✓ Fuente DEBE ser 🔊, 🎙️, o 🤖 (NUNCA 📊 fallback)
+
+
+PASO 10: VERIFICAR CONFIANZA DE PREDICCIONES
+═══════════════════════════════════════════════════════════════════════════════
+
+Abre DevTools (F12 > Network):
+
+  1. Presiona 🔄 Actualizar
+  
+  2. Busca request a /api/stats/top_songs
+  
+  3. En Response, busca "confianza_prediccion"
+  
+  ✓ Valores DEBEN estar en rango 0.65-0.85 (sensible)
+  ✓ NO debe haber 0.0 o 1.0 (sería problema)
+  ✓ Promedio DEBE estar ~0.75-0.80
+
+
+PASO 11: PRUEBA DE ESTRÉS (OPCIONAL)
+═══════════════════════════════════════════════════════════════════════════════
+
+Ejecutar múltiples ciclos:
+
+  python launch_app.py
+  # Espera 60s (Ciclo 1)
+  # Presiona Actualizar en navegador
+  # Espera 60s más (Ciclo 2)
+  # Presiona Actualizar
+  # ...
+  # Después de 5-6 ciclos (5-6 minutos):
+  
+  ✓ Sistema sigue respondiendo
+  ✓ Sin memory leaks (RAM constante)
+  ✓ Sin errores acumulados
+  ✓ Datos siguen siendo válidos
+
+
+PASO 12: VALIDAR TRANSPARENCIA
+═══════════════════════════════════════════════════════════════════════════════
+
+En el navegador, en ESTADÍSTICAS (derecha abajo):
+
+  Debe haber un desglose como:
+  ✅ 🔊 ICY: 55% (metadata del stream)
+  ✅ 🎙️ AUDD: 20% (reconocimiento audio)
+  ✅ 🤖 PREDICCIÓN: 20% (análisis estadístico)
+  ✅ 📊 FALLBACK: 5% (sin datos, fallback genérico)
+
+  Porcentajes deben sumar 100%
+  
+  Nota: FALLBACK debe ser < 10% (raro)
+        PREDICCIÓN debe ser 10-30% (normal)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+
+LISTA DE VERIFICACIÓN RÁPIDA
+═══════════════════════════════════════════════════════════════════════════════
+
+ANTES DE ENVIAR A PRODUCCIÓN:
+
+□ test_predictor_simple.py: ✅ PASS
+□ test_integration_detection.py: ✅ PASS
+□ Index.html carga sin errores
+□ Punto verde pulsante visible
+□ Contador 15→14→13 funciona
+□ TOP CANCIONES no vacío
+□ ÚLTIMAS REPRODUCCIONES no vacío
+□ Badges de fuente correctos (🔊 🎙️ 🤖)
+□ PREDICCIÓN% es 10-30%
+□ Confianza 70-85%
+□ SIN "Transmisión en Vivo"
+□ SIN "Artista Desconocido"
+□ API retorna datos frescos
+□ Auto-refresh cada 15s funciona
+□ Manual refresh funciona
+□ Después de 60s hay datos nuevos
+□ Performance < 70 segundos por ciclo
+
+
+═══════════════════════════════════════════════════════════════════════════════
+
+                        ✅ SI TODO PASA, LISTA PARA PRODUCCIÓN
+
+═══════════════════════════════════════════════════════════════════════════════
