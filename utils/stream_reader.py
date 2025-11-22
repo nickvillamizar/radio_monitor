@@ -923,7 +923,7 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
                     # Obtener historial reciente para evitar duplicados
                     recent_plays = db.session.query(Cancion).filter(
                         Cancion.emisora_id == e.id
-                    ).order_by(Cancion.fecha_deteccion.desc()).limit(10).all()
+                    ).order_by(Cancion.fecha_reproduccion.desc()).limit(10).all()
                     
                     fallback_history = [
                         {
