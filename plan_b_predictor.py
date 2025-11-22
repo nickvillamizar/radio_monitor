@@ -17,9 +17,10 @@ import logging
 from datetime import datetime, timedelta
 from random import choice, randint
 from typing import Optional, Dict, List, Tuple
-from sqlalchemy import func, desc
-from utils.db import db
-from models.emisoras import Emisora, Cancion
+
+# Imports tardíos dentro de funciones para evitar ciclos de importación
+# No importar aquí: from utils.db import db
+# No importar aquí: from models.emisoras import Emisora, Cancion
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,9 @@ class PlanBPredictor:
     
     def __init__(self, emisora_id: int):
         """Inicializa predictor para una emisora específica."""
+        from utils.db import db  # Import tardío para evitar ciclos
+        from models.emisoras import Emisora
+        
         self.emisora_id = emisora_id
         self.emisora = db.session.query(Emisora).filter(
             Emisora.id == emisora_id
@@ -118,6 +122,10 @@ class PlanBPredictor:
         Estrategia 1: Reproducción Histórica
         Obtiene TOP 3 canciones de últimas 48h y selecciona aleatoriamente.
         """
+        from utils.db import db
+        from models.emisoras import Cancion
+        from sqlalchemy import func, desc
+        
         try:
             cutoff_time = datetime.now() - timedelta(hours=48)
             

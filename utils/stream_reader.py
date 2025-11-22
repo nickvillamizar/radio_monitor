@@ -912,44 +912,16 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
                         else:
                             detected_info["genre"] = "Desconocido"
                 
-                # PASO 4: PLAN B - PREDICCIÓN INTELIGENTE (si ICY+AudD fallaron)
+                # PASO 4: FALLBACK - SIN PLAN B POR AHORA (evitar ciclos de import)
+                # TODO: Integrar Plan B predictor cuando se resuelvan ciclos de importación
                 if not detected_info:
-                    logger.info(f"[PLAN-B] Activando predicción inteligente basada en histórico...")
-                    
-                    try:
-                        from plan_b_predictor import PlanBPredictor
-                        
-                        predictor = PlanBPredictor(e.id)
-                        prediction = predictor.predict_song(strategy="auto")
-                        
-                        if prediction:
-                            detected_info = {
-                                "artist": prediction.get("artista", "Desconocido"),
-                                "title": prediction.get("titulo", "Transmisión en Vivo"),
-                                "genre": prediction.get("genero", "Desconocido"),
-                                "fuente": "plan_b",
-                                "razon": prediction.get("razon", "Predicción automática"),
-                                "confianza": prediction.get("confianza", 0)
-                            }
-                            logger.info(f"[PLAN-B] [SUCCESS] Predicción exitosa")
-                            logger.info(f"   Artista: {detected_info['artist']}")
-                            logger.info(f"   Título: {detected_info['title']}")
-                            logger.info(f"   Razon: {detected_info.get('razon', '')}")
-                            logger.info(f"   Confianza: {detected_info.get('confianza', 0)}%")
-                        else:
-                            logger.warning(f"[PLAN-B] No hay histórico para predecir - FALLBACK genérico")
-                            detected_info = {
-                                "artist": "Artista Desconocido",
-                                "title": "Transmisión en Vivo",
-                                "genre": "Desconocido"
-                            }
-                    except Exception as pb_exc:
-                        logger.warning(f"[PLAN-B] Error en predictor: {pb_exc} - FALLBACK genérico")
-                        detected_info = {
-                            "artist": "Artista Desconocido",
-                            "title": "Transmisión en Vivo",
-                            "genre": "Desconocido"
-                        }
+                    detected_info = {
+                        "artist": "Artista Desconocido",
+                        "title": "Transmisión en Vivo",
+                        "genre": "Desconocido",
+                        "fuente": "fallback"
+                    }
+                    logger.warning(f"[WARN]  FALLBACK: Sin detección automática")
                 
                 # PASO 5: VERIFICAR DUPLICADO
                 artista = detected_info["artist"]
