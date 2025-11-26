@@ -16,7 +16,7 @@ RESULTADO: Canción con 🤖 badge de "PREDICCIÓN ANALÍTICA"
 import logging
 import random
 from datetime import datetime
-from collections import defaultdict
+from collections import defaultdict, deque
 from typing import Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -123,6 +123,12 @@ EVERGREEN_SONGS = [
     ("Enrique Iglesias", "El Perdedor"),
     ("Rubén Blades", "Buscando America"),
 ]
+
+# Mapear canciones conocidas por artista (derivado de EVERGREEN_SONGS)
+ARTIST_SONGS = defaultdict(list)
+for a, t in EVERGREEN_SONGS:
+    ARTIST_SONGS[a].append(t)
+ 
 
 # ============================================================================
 # PATRONES HORARIOS (Qué se reproduce por hora)
@@ -246,22 +252,30 @@ class PredictiveModel:
         Returns:
             Tuple: (artista, titulo, genero)
         """
-        # Buscar en evergreen songs
-        evergreen_for_artist = [
-            (a, t) for a, t in EVERGREEN_SONGS if a.lower() == artist.lower()
-        ]
-        
-        if evergreen_for_artist:
-            selected_artist, title = random.choice(evergreen_for_artist)
-            genre = self._get_genre_for_artist(selected_artist)
-            logger.info(f"[PREDICT] 🎵 Seleccionada canción evergreen: {selected_artist} - {title}")
-            return (selected_artist, title, genre)
-        
-        # Si no está en evergreen, retornar algo genérico
-        title = f"Mix {self.get_hourly_genre()} - {random.randint(1, 99)}"
+        # 1) Si tenemos canciones conocidas del artista, usarlas
+        if artist in ARTIST_SONGS and ARTIST_SONGS[artist]:
+            title = random.choice(ARTIST_SONGS[artist])
+            genre = self._get_genre_for_artist(artist)
+            logger.info(f"[PREDICT] 🎵 Canción conocida: {artist} - {title}")
+            return (artist, title, genre)
+
+        # 2) Si artista no tiene canciones conocidas, intentar elegir
+        #    una canción REAL de otro artista del mismo género
         genre = self._get_genre_for_artist(artist)
-        
-        return (artist, title, genre)
+        candidates = []
+        for a, t in EVERGREEN_SONGS:
+            if self._get_genre_for_artist(a) == genre:
+                candidates.append((a, t))
+
+        if candidates:
+            selected_artist, title = random.choice(candidates)
+            logger.info(f"[PREDICT] 🎵 Artista sin historial; usando canción real de {selected_artist}: {title}")
+            return (selected_artist, title, genre)
+
+        # 3) Último recurso: devolver un evergreen cualquiera
+        selected_artist, title = random.choice(EVERGREEN_SONGS)
+        genre = self._get_genre_for_artist(selected_artist)
+        return (selected_artist, title, genre)
 
     def _get_genre_for_artist(self, artist: str) -> str:
         """
@@ -294,12 +308,13 @@ class PredictiveModel:
         
         station_lower = station_name.lower()
         
-        # Patrones para cada género (orden importa - probar específicos primero)
+        # Patrones para cada género (orden importa - priorizar específicos como merengue/bachata)
         genre_patterns = {
-            "Salsa": ["salsa", "tropical", "guaguancó", "timba", "mambo"],
-            "Reggaeton": ["reggaeton", "urbana", "trap", "hip hop", "hip-hop", "urban", "calle"],
-            "Bachata": ["bachata", "romántica", "balada", "bolero", "amor", "sentimiento"],
-            "Merengue": ["merengue", "típica", "tradicional", "dominicana"],
+            "Merengue": ["merengue", "típica", "tradicional", "dominicana", "merengue tradicional"],
+            "Bachata": ["bachata", "bachatero", "romántica", "romantica", "bolero"],
+            "Salsa": ["salsa", "tropical", "guaguancó", "timba", "mambo", "tropical fm"],
+            "Reggaeton": ["reggaeton", "regueton", "urbana", "trap", "hip hop", "hip-hop", "urban", "calle"],
+            "Romantica": ["romantica", "romántica", "romantico", "romántico", "romance", "románt"],
         }
         
         # Buscar coincidencias de patrones (en orden: Salsa, Reggaeton, Bachata, Merengue)
@@ -307,6 +322,9 @@ class PredictiveModel:
             for pattern in patterns:
                 if pattern in station_lower:
                     logger.debug(f"[INFER] Emisora '{station_name}' -> Genero: {genre} (patron: {pattern})")
+                    # Mapear géneros genéricos a géneros que tenemos en los pools
+                    if genre == "Romantica":
+                        return "Bachata"
                     return genre
         
         # Si no coincide con patrones específicos, usar patrón general
@@ -344,53 +362,48 @@ class PredictiveModel:
         # 1️⃣ INFERIR GÉNERO CONTEXTUAL DE LA EMISORA
         inferred_genre = genre_hint or self._infer_station_genre(station_name)
         
-        # 2️⃣ ELEGIR MÉTODO DE PREDICCIÓN
+        # 2️⃣ ELEGIR MÉTODO DE PREDICCIÓN (ajustado para menor uso de evergreen)
         method_choice = random.random()
-        
-        if method_choice < 0.6:
-            # 60%: Usar canción evergreen del género inferido
-            # Filtrar evergreen songs para el género
+
+        if method_choice < 0.30:
+            # 30%: Usar canción evergreen del género inferido (pero evitar repetidos globales)
             evergreen_for_genre = [
                 (a, t) for a, t in EVERGREEN_SONGS
-                if self._get_genre_for_artist(a) == inferred_genre or random.random() > 0.7
+                if self._get_genre_for_artist(a) == inferred_genre
             ]
-            
+
+            # Evitar global recent
+            evergreen_for_genre = [p for p in evergreen_for_genre if not _is_recent_global(p[0], p[1])]
+
             if evergreen_for_genre:
                 artist, song_title = random.choice(evergreen_for_genre)
             else:
-                artist, song_title = random.choice(EVERGREEN_SONGS)
-            
-            genre = self._get_genre_for_artist(artist)
-            confidence = 85
-            method = "evergreen"
-            reason = f"Clásico garantizado ({genre})"
-            
-        elif method_choice < 0.85:
-            # 25%: Trending artist del género inferido
+                # si no quedan, pasar a trending
+                method_choice = 0.5
+        
+        if 0.30 <= method_choice < 0.80:
+            # 50%: Trending artist del género inferido
             genre = inferred_genre
-            
-            # Obtener artistas disponibles para este género
-            if genre in TRENDING_ARTISTS_RD:
+            if genre in TRENDING_ARTISTS_RD and TRENDING_ARTISTS_RD[genre]:
                 artist = random.choice(TRENDING_ARTISTS_RD[genre])
             else:
                 artist = self.select_artist_for_genre(genre)
-            
-            _, song_title, _ = self.select_song_for_artist(artist)
+
+            artist, song_title, _ = self.select_song_for_artist(artist)
             confidence = 75
             method = "trending"
             reason = f"Artista trending {genre}"
-            
+
         else:
-            # 15%: Género del horario pero respetando contexto
+            # 20%: Género del horario pero respetando contexto
             genre = inferred_genre if station_name else self.get_hourly_genre()
-            
-            # Obtener artista del género contextual
-            if genre in TRENDING_ARTISTS_RD:
+
+            if genre in TRENDING_ARTISTS_RD and TRENDING_ARTISTS_RD[genre]:
                 artist = random.choice(TRENDING_ARTISTS_RD[genre])
             else:
                 artist = self.select_artist_for_genre(genre)
-            
-            _, song_title, _ = self.select_song_for_artist(artist)
+
+            artist, song_title, _ = self.select_song_for_artist(artist)
             confidence = 70
             method = "horario"
             reason = f"Patrón horario: {genre}"
@@ -438,6 +451,21 @@ predictor = PredictiveModel()
 # FUNCIONES DE CONVENIENCIA
 # ============================================================================
 
+# Registro en memoria de predicciones recientes a nivel GLOBAL
+# Evita que el predictor ponga la misma canción en muchas emisoras
+RECENT_GLOBAL_PREDICTIONS_MAX = 100
+recent_global_predictions = deque(maxlen=RECENT_GLOBAL_PREDICTIONS_MAX)
+
+def _is_recent_global(artist: str, title: str) -> bool:
+    key = (artist.lower(), title.lower())
+    return key in recent_global_predictions
+
+def _push_global_prediction(artist: str, title: str) -> None:
+    key = (artist.lower(), title.lower())
+    # almacenar como tuple simple
+    recent_global_predictions.append(key)
+
+
 def predict_song_now(station_name: Optional[str] = None) -> Dict:
     """
     Función rápida para obtener predicción inmediata
@@ -470,25 +498,39 @@ def get_song_for_station(station_name: str,
     """
     prediction = predictor.predict_song(station_name=station_name)
     attempts = 0  # Inicializar attempts
-    
-    # Si tenemos historial, evitar repetir en ESTA emisora
+
+    # Construir set de canciones recientes de la emisora (últimas 10)
+    recent_songs = set()
     if fallback_history:
         recent_songs = {
-            (s['artista'].lower(), s['titulo'].lower()) 
-            for s in fallback_history[-10:]  # Últimas 10 en historial de esta emisora
+            (s['artista'].lower(), s['titulo'].lower())
+            for s in fallback_history[-10:]
         }
-        
-        while (prediction['artista'].lower(), prediction['titulo'].lower()) in recent_songs and attempts < 5:
-            prediction = predictor.predict_song(station_name=station_name)
+
+    # Reintentar si la predicción ya está en el historial de la emisora
+    # o si ya fue usada recientemente por OTRAS emisoras (global)
+    while attempts < 8:
+        key = (prediction['artista'].lower(), prediction['titulo'].lower())
+        if key in recent_songs or _is_recent_global(prediction['artista'], prediction['titulo']):
             attempts += 1
-            logger.debug(f"[STATION] Reintentando predicción para {station_name} (intento {attempts})")
-    
+            logger.debug(f"[STATION] Predicción repetida detectada para {station_name} (intento {attempts}) -> {prediction['artista']} - {prediction['titulo']}")
+            prediction = predictor.predict_song(station_name=station_name)
+            continue
+        # aceptable si no está en reciente de emisora ni en global
+        break
+
+    # Empujar la predicción final al registro global para evitar repeticiones
+    try:
+        _push_global_prediction(prediction['artista'], prediction['titulo'])
+    except Exception:
+        logger.debug("[STATION] No se pudo registrar predicción globalmente")
+
     # Marcar con contexto específico de la emisora
     prediction['razon_prediccion'] = f"Emisora '{station_name}' -> Genero contextual: {prediction['genero']}"
-    
+
     logger.info(f"[STATION] CONTEXTO {station_name}: {prediction['artista']} - {prediction['titulo']} "
                f"({prediction['genero']}) [reintentos: {attempts}]")
-    
+
     return prediction
 
 
