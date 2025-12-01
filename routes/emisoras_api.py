@@ -31,13 +31,24 @@ def listar_emisoras():
     try:
         emisoras = Emisora.query.order_by(Emisora.nombre).all()
         
-        # Construir respuesta simple y confiable
         data = []
         for e in emisoras:
             try:
                 ahora = datetime.now()
                 estado, color = calcular_estado(e)
                 dias = (ahora - e.ultima_actualizacion).days if e.ultima_actualizacion else None
+                
+                # Calcular plays 24h
+                plays_24h = db.session.query(func.count(Cancion.id)).filter(
+                    Cancion.emisora_id == e.id,
+                    Cancion.fecha_reproduccion >= ahora - timedelta(days=1)
+                ).scalar() or 0
+                
+                # Calcular plays 7d
+                plays_7d = db.session.query(func.count(Cancion.id)).filter(
+                    Cancion.emisora_id == e.id,
+                    Cancion.fecha_reproduccion >= ahora - timedelta(days=7)
+                ).scalar() or 0
                 
                 item = {
                     "id": int(e.id),
@@ -48,18 +59,22 @@ def listar_emisoras():
                     "dias_sin_actualizar": dias,
                     "estado": estado,
                     "color": color,
-                    "ultima_cancion": str(e.ultima_cancion) if e.ultima_cancion else "Desconocido - Transmisión en Vivo"
+                    "ultima_cancion": str(e.ultima_cancion) if e.ultima_cancion else "Desconocido - Transmisión en Vivo",
+                    "plays_24h": int(plays_24h),
+                    "plays_7d": int(plays_7d)
                 }
                 data.append(item)
             except Exception as ex:
+                print(f"Error procesando emisora {e.id}: {ex}")
                 pass
         
         return jsonify(data), 200
     
     except Exception as e:
+        print(f"ERROR CRÍTICO en listar_emisoras: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
-
-
 # POST — Crear nueva emisora
 @emisoras_api.route("/api/emisoras", methods=["POST"])
 def crear_emisora():

@@ -777,98 +777,129 @@
       return `<span style="background:${color};color:white;padding:2px 6px;border-radius:4px;font-size:0.8rem;font-weight:bold;">${labels[estado] || estado}</span>`;
     }
 
-    async function cargarEmisoras() {
-      try {
-        emisorasTableBody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;">Cargando...</td></tr>';
-        
-        const res = await fetch('/api/emisoras');
-        if (!res.ok) throw new Error('Error cargando emisoras');
-        let emisoras = await res.json();
-        
-        // Filtrar por estado si hay uno seleccionado
-        if (estadoFiltro) {
-          emisoras = emisoras.filter(e => e.estado === estadoFiltro);
-        }
-        
-        document.getElementById('emisoras-count').textContent = `Total: ${emisoras.length} emisoras`;
-        
-        if (emisoras.length === 0) {
-          emisorasTableBody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;">No hay emisoras</td></tr>';
-          return;
-        }
-        
-        emisorasTableBody.innerHTML = emisoras.map(e => {
-          const diasText = e.dias_sin_actualizar === null ? '—' : 
-                          e.dias_sin_actualizar === 0 ? 'Hoy' :
-                          e.dias_sin_actualizar === 1 ? 'Ayer' :
-                          `${e.dias_sin_actualizar}d`;
-          
-          return `
-            <tr data-id="${e.id}">
-              <td style="text-align:center;">${getEstadoBadge(e.estado, e.color)}</td>
-              <td class="edit-nombre">${e.nombre}</td>
-              <td class="edit-pais">${e.pais}</td>
-              <td title="${e.ultima_actualizacion || ''}">${e.ultima_actualizacion ? e.ultima_actualizacion.substring(0, 10) : '—'} <small style="color:#999;">${diasText}</small></td>
-              <td style="text-align:center; font-weight:bold;">${e.plays_24h}</td>
-              <td style="text-align:center; font-weight:bold;">${e.plays_7d}</td>
-              <td style="font-size:0.8rem; color:#999; max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${e.url_stream}</td>
-              <td style="white-space:nowrap;">
-                <button class="btn-small btn-edit" data-id="${e.id}" title="Editar">✏️</button>
-                <button class="btn-small btn-delete" data-id="${e.id}" title="Eliminar">🗑️</button>
-              </td>
-            </tr>`;
-        }).join('');
-      } catch (err) {
-        console.error('Error:', err);
-        emisorasTableBody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#f00;">Error cargando</td></tr>';
-      }
+async function cargarEmisoras() {
+  try {
+    emisorasTableBody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;">Cargando emisoras...</td></tr>';
+    
+    const res = await fetch('/api/emisoras');
+    
+    if (!res.ok) {
+      throw new Error(`Error ${res.status}: ${res.statusText}`);
     }
+    
+    let emisoras = await res.json();
+    
+    // Filtrar por estado si hay uno seleccionado
+    if (estadoFiltro) {
+      emisoras = emisoras.filter(e => e.estado === estadoFiltro);
+    }
+    
+    document.getElementById('emisoras-count').textContent = `Total: ${emisoras.length} emisoras`;
+    
+    if (emisoras.length === 0) {
+      emisorasTableBody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;">No hay emisoras que coincidan con el filtro</td></tr>';
+      return;
+    }
+    
+    emisorasTableBody.innerHTML = emisoras.map(e => {
+      const diasText = e.dias_sin_actualizar === null ? '—' : 
+                      e.dias_sin_actualizar === 0 ? 'Hoy' :
+                      e.dias_sin_actualizar === 1 ? 'Ayer' :
+                      `${e.dias_sin_actualizar}d`;
+      
+      const fechaCorta = e.ultima_actualizacion ? e.ultima_actualizacion.substring(0, 10) : '—';
+      
+      return `
+        <tr data-id="${e.id}">
+          <td style="text-align:center;">${getEstadoBadge(e.estado, e.color)}</td>
+          <td class="edit-nombre">${e.nombre || '—'}</td>
+          <td class="edit-pais">${e.pais || '—'}</td>
+          <td title="${e.ultima_actualizacion || ''}">
+            ${fechaCorta} 
+            <small style="color:#999;">${diasText}</small>
+          </td>
+          <td style="text-align:center; font-weight:bold;">${e.plays_24h || 0}</td>
+          <td style="text-align:center; font-weight:bold;">${e.plays_7d || 0}</td>
+          <td style="font-size:0.8rem; color:#999; max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+            ${e.url_stream || '—'}
+          </td>
+          <td style="white-space:nowrap;">
+            <button class="btn-small btn-edit" data-id="${e.id}" title="Editar" style="cursor:pointer;">✏️</button>
+            <button class="btn-small btn-delete" data-id="${e.id}" title="Eliminar" style="cursor:pointer;">🗑️</button>
+          </td>
+        </tr>`;
+    }).join('');
+    
+  } catch (err) {
+    console.error('Error cargando emisoras:', err);
+    emisorasTableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#f00;">❌ Error: ${err.message}</td></tr>`;
+    showNotification('Error cargando emisoras', 'error');
+  }
+}
+// Manejador de eventos para botones de acciones
+document.addEventListener('click', async (e) => {
+  // Editar emisora
+  if (e.target.classList.contains('btn-edit')) {
+    const id = e.target.dataset.id;
+    const tr = e.target.closest('tr');
+    const nombreActual = tr.querySelector('.edit-nombre').textContent.trim();
+    
+    const nombre = prompt('Nuevo nombre:', nombreActual);
+    if (!nombre || nombre === nombreActual) return;
 
-    // Manejador de eventos para botones de acciones
-    document.addEventListener('click', async (e) => {
-      // Editar emisora
-      if (e.target.classList.contains('btn-edit')) {
-        const id = e.target.dataset.id;
-        const tr = e.target.closest('tr');
-        const nombre = prompt('Nuevo nombre:', tr.querySelector('.edit-nombre').textContent);
-        if (!nombre) return;
+    try {
+      const res = await fetch(`/api/emisoras/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nombre: nombre })
+      });
 
-        try {
-          const res = await fetch(`/api/emisoras/${id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ nombre })
-          });
+      const data = await res.json();
 
-          if (!res.ok) {
-            const err = await res.json();
-            showNotification(err.error || 'Error', 'error');
-            return;
-          }
-          showNotification('Actualizada');
-          cargarEmisoras();
-        } catch (err) {
-          console.error('Error:', err);
-          showNotification('Error', 'error');
-        }
+      if (!res.ok) {
+        showNotification(data.error || 'Error actualizando', 'error');
+        console.error('Error del servidor:', data);
+        return;
       }
+      
+      showNotification('✅ Emisora actualizada correctamente');
+      await cargarEmisoras();
+    } catch (err) {
+      console.error('Error completo:', err);
+      showNotification('❌ Error de conexión', 'error');
+    }
+  }
 
-      // Eliminar emisora
-      if (e.target.classList.contains('btn-delete')) {
-        const id = e.target.dataset.id;
-        const nombre = e.target.closest('tr').querySelector('.edit-nombre').textContent;
-        if (!confirm(`¿Eliminar "${nombre}"?`)) return;
+  // Eliminar emisora
+  if (e.target.classList.contains('btn-delete')) {
+    const id = e.target.dataset.id;
+    const tr = e.target.closest('tr');
+    const nombre = tr.querySelector('.edit-nombre').textContent.trim();
+    
+    if (!confirm(`¿Seguro que deseas eliminar "${nombre}"?\n\nEsta acción NO se puede deshacer.`)) return;
 
-        try {
-          const res = await fetch(`/api/emisoras/${id}`, { method: 'DELETE' });
-          if (!res.ok) throw new Error('Error eliminando');
-          showNotification('Eliminada');
-          cargarEmisoras();
-        } catch (err) {
-          showNotification('Error', 'error');
-        }
+    try {
+      const res = await fetch(`/api/emisoras/${id}`, { 
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      const data = await res.json();
+      
+      if (!res.ok) {
+        showNotification(data.error || 'Error eliminando', 'error');
+        console.error('Error del servidor:', data);
+        return;
       }
-    });
+      
+      showNotification('✅ Emisora eliminada correctamente');
+      await cargarEmisoras();
+    } catch (err) {
+      console.error('Error completo:', err);
+      showNotification('❌ Error de conexión', 'error');
+    }
+  }
+});
 
     // Agregar nueva emisora
     document.getElementById('add-station').addEventListener('click', async () => {
