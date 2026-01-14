@@ -1,5 +1,5 @@
-# Use Python 3.11 slim as base image
-FROM python:3.11-slim
+# Use Python 3.13 slim as base image
+FROM python:3.13-slim
 
 # Install system dependencies including ffmpeg (critical for AudD audio recognition)
 RUN apt-get update && \
