@@ -12,6 +12,10 @@ from datetime import datetime
 from urllib.parse import urlparse, urljoin
 from typing import Optional, Tuple, Dict, Any
 import random
+import shutil
+import hashlib
+import hmac
+import base64
 
 # Importar modelo predictivo
 from .predictive_model import predict_song_now, get_song_for_station
@@ -21,11 +25,12 @@ from .predictive_model import predict_song_now, get_song_for_station
 # ============================================================================
 
 ICY_TIMEOUT = 8  # Reducido de 15 a 8 segundos (más rápido)
-SAMPLE_DURATION = 10  # Reducido de 12 a 10 segundos
+# Aumentar sample y reintentos para mejorar probabilidades de detección
+SAMPLE_DURATION = 20  # Aumentado a 20s para mayor probabilidad de reconocimiento
 DEDUPE_SECONDS = 90
 MAX_RETRIES_ICY = 3  # Reducido de 5 a 3 intentos
-MAX_RETRIES_AUDD = 2  # Reducido de 3 a 2 intentos
-RETRY_DELAY = 1  # Reducido de 2 a 1 segundo
+MAX_RETRIES_AUDD = 3  # Incrementado a 3 intentos
+RETRY_DELAY = 2  # Incrementado para backoff más conservador
 
 TEMP_DIR = os.path.join(os.getcwd(), "tmp")
 os.makedirs(TEMP_DIR, exist_ok=True)
@@ -61,6 +66,22 @@ handler.setFormatter(logging.Formatter("[%(asctime)s] %(levelname)s - %(message)
 if not logger.handlers:
     logger.addHandler(handler)
 logger.setLevel(logging.INFO)
+
+# ============================================================================
+# VERIFICACIÓN DE DEPENDENCIAS Y CIRCUIT-BREAKER (DESPUÉS DE LOGGER)
+# ============================================================================
+
+# Verificar disponibilidad de ffmpeg en el entorno
+FFMPEG_AVAILABLE = bool(shutil.which("ffmpeg"))
+if not FFMPEG_AVAILABLE:
+    logger.warning("ffmpeg no encontrado en PATH: reconocimiento por audio (AudD) estará deshabilitado hasta instalar ffmpeg")
+
+# Circuit-breaker simple para AudD: desactivar temporalmente si hay fallos repetidos
+AUDD_ENABLED = True
+AUDD_FAILURES = 0
+AUDD_FAILURE_THRESHOLD = 3
+AUDD_COOLDOWN = 300  # segundos
+AUDD_LAST_FAILURE = None
 
 # ============================================================================
 # UTILIDADES
@@ -600,10 +621,182 @@ def get_icy_metadata(stream_url: str, timeout: int = 8) -> Optional[str]:
 # RECONOCIMIENTO POR AUDIO - VERSIÓN RÁPIDA
 # ============================================================================
 
+def capture_and_recognize_acrcloud(stream_url: str, access_key: str, secret_key: str) -> Optional[Dict[str, Any]]:
+    """Captura y reconoce con ACRCloud (Gratuito - 1000 req/mes)."""
+    
+    if not access_key or not secret_key:
+        return None
+    
+    if not FFMPEG_AVAILABLE:
+        logger.debug("   Skipping ACRCloud: ffmpeg not available")
+        return None
+    
+    for attempt in range(MAX_RETRIES_AUDD):
+        sample_path = os.path.join(TEMP_DIR, f"sample_{int(time.time())}_{os.getpid()}_{attempt}.wav")
+        
+        duration = SAMPLE_DURATION
+        
+        cmd = [
+            "ffmpeg", "-y",
+            "-hide_banner", "-loglevel", "quiet",
+            "-i", stream_url,
+            "-t", str(duration),
+            "-ac", "1",
+            "-ar", "44100",
+            "-f", "wav",
+            sample_path
+        ]
+        
+        try:
+            logger.debug(f"   Capturando audio {duration}s...")
+            
+            subprocess.run(
+                cmd,
+                check=True,
+                timeout=duration + 5,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            
+            if not os.path.exists(sample_path) or os.path.getsize(sample_path) < 500:
+                logger.debug(f"   Audio muy pequeño o falla")
+                try:
+                    os.remove(sample_path)
+                except:
+                    pass
+                if attempt < MAX_RETRIES_AUDD - 1:
+                    time.sleep(0.5)
+                    continue
+                return None
+            
+            # Preparar archivo de audio
+            with open(sample_path, "rb") as f:
+                audio_data = f.read()
+            
+            # Generar firma ACRCloud
+            timestamp = str(int(time.time()))
+            string_to_sign = f"POST\n/v1/identify\n{access_key}\naudio/wav\n{timestamp}"
+            signature = base64.b64encode(
+                hmac.new(
+                    secret_key.encode(),
+                    string_to_sign.encode(),
+                    hashlib.sha1
+                ).digest()
+            ).decode()
+            
+            # Enviar a ACRCloud
+            logger.debug(f"   Enviando a ACRCloud...")
+            headers = {
+                "Content-Type": "audio/wav",
+                "Authorization": f"ACRCloud {access_key}:{signature}",
+                "x-ac-data-type": "audio",
+                "x-ac-media-type": "recording",
+                "x-ac-timestamp": timestamp
+            }
+            
+            resp = requests.post(
+                "https://identify-us-west-2.acrcloud.com/v1/identify",
+                headers=headers,
+                data=audio_data,
+                timeout=30
+            )
+            
+            try:
+                os.remove(sample_path)
+            except:
+                pass
+            
+            # Guardar respuesta para análisis
+            try:
+                fname = os.path.join(TEMP_DIR, f"acrcloud_resp_{int(time.time())}_{os.getpid()}.json")
+                with open(fname, "w", encoding="utf-8") as _f:
+                    _f.write(resp.text)
+                logger.debug(f"   ACRCloud: respuesta guardada en {fname}")
+            except Exception:
+                pass
+            
+            if resp.status_code == 200:
+                try:
+                    j = resp.json()
+                except Exception:
+                    j = None
+                
+                if j and j.get("status") == 0 and j.get("metadata"):
+                    metadata = j["metadata"]
+                    
+                    # ACRCloud puede tener múltiples resultados (music, humming, etc)
+                    music_results = metadata.get("music", [])
+                    
+                    if music_results:
+                        result = music_results[0]
+                        artist = result.get("artists", [{}])[0].get("name", "").strip()
+                        title = result.get("title", "").strip()
+                        
+                        if artist and title and is_valid_metadata(artist) and is_valid_metadata(title):
+                            # Extraer género
+                            genre = "Desconocido"
+                            
+                            # Intentar obtener género de los datos
+                            if "genres" in result and result["genres"]:
+                                genre = result["genres"][0].get("name", "Desconocido")
+                            
+                            # Si no hay género, consultar MusicBrainz
+                            if genre == "Desconocido":
+                                mb_genre = get_genre_musicbrainz(artist, title)
+                                if mb_genre:
+                                    genre = mb_genre
+                            
+                            logger.info(f"   [OK] ACRCloud reconocio exitosamente: {artist} - {title}")
+                            return {
+                                "artist": artist,
+                                "title": title,
+                                "genre": genre
+                            }
+            
+            logger.debug(f"   ACRCloud: no reconoció (attempt {attempt + 1}/{MAX_RETRIES_AUDD})")
+            if attempt < MAX_RETRIES_AUDD - 1:
+                time.sleep(RETRY_DELAY * 2)
+        
+        except subprocess.TimeoutExpired:
+            logger.debug(f"   Timeout capturando audio")
+        except Exception as e:
+            logger.debug(f"   Error ACRCloud: {str(e)[:50]}")
+        finally:
+            try:
+                if os.path.exists(sample_path):
+                    os.remove(sample_path)
+            except:
+                pass
+        
+        if attempt < MAX_RETRIES_AUDD - 1:
+            time.sleep(RETRY_DELAY)
+    
+    logger.debug(f"   ACRCloud: todos los intentos agotados")
+    return None
+
+
 def capture_and_recognize_audd(stream_url: str, audd_token: str) -> Optional[Dict[str, Any]]:
-    """Captura y reconoce con AudD - VERSIÓN RÁPIDA."""
+    """Captura y reconoce con AudD (fallback si ACRCloud falla)."""
+    global AUDD_ENABLED, AUDD_FAILURES, AUDD_LAST_FAILURE
+
     if not audd_token:
         return None
+
+    # Si ffmpeg no está disponible no intentamos capturar
+    if not FFMPEG_AVAILABLE:
+        logger.debug("   Skipping AudD: ffmpeg not available")
+        return None
+
+    # Si circuit-breaker está activado por fallos previos, comprobar cooldown
+    if not AUDD_ENABLED:
+        if AUDD_LAST_FAILURE and (time.time() - AUDD_LAST_FAILURE) < AUDD_COOLDOWN:
+            logger.debug("   AudD disabled due to recent failures; skipping")
+            return None
+        else:
+            # cooldown expiró, reactivar
+            AUDD_ENABLED = True
+            AUDD_FAILURES = 0
+            AUDD_LAST_FAILURE = None
     
     for attempt in range(MAX_RETRIES_AUDD):
         sample_path = os.path.join(TEMP_DIR, f"sample_{int(time.time())}_{os.getpid()}_{attempt}.wav")
@@ -651,11 +844,12 @@ def capture_and_recognize_audd(stream_url: str, audd_token: str) -> Optional[Dic
                 files = {"file": ("sample.wav", f, "audio/wav")}
                 data = {"api_token": audd_token, "return": "spotify"}
                 
+                # Aumentar timeout por si la resolución toma algo más
                 resp = requests.post(
                     "https://api.audd.io/",
                     files=files,
                     data=data,
-                    timeout=20
+                    timeout=30
                 )
             
             try:
@@ -663,10 +857,37 @@ def capture_and_recognize_audd(stream_url: str, audd_token: str) -> Optional[Dic
             except:
                 pass
             
+            # Log y diagnóstico: guardar respuesta completa para análisis si falla
+            try:
+                status_code = resp.status_code
+                text = resp.text
+            except Exception:
+                status_code = None
+                text = None
+
+            logger.debug(f"   AudD HTTP status: {status_code}")
+
+            # Guardar respuesta cruda para análisis en tmp
+            try:
+                if text:
+                    fname = os.path.join(TEMP_DIR, f"audd_resp_{int(time.time())}_{os.getpid()}.json")
+                    with open(fname, "w", encoding="utf-8") as _f:
+                        _f.write(text)
+                    logger.debug(f"   AudD: respuesta guardada en {fname}")
+            except Exception:
+                pass
+
             if resp.status_code == 200:
-                j = resp.json()
-                if j.get("status") == "success" and j.get("result"):
+                try:
+                    j = resp.json()
+                except Exception:
+                    j = None
+                if j and j.get("status") == "success" and j.get("result"):
                     result = j["result"]
+                    # Éxito -> reset failures
+                    AUDD_FAILURES = 0
+                    AUDD_LAST_FAILURE = None
+                    
                     artist = result.get("artist")
                     title = result.get("title")
                     
@@ -692,6 +913,14 @@ def capture_and_recognize_audd(stream_url: str, audd_token: str) -> Optional[Dic
                             "title": title,
                             "genre": genre
                         }
+                else:
+                    # fallo lógico de AudD (respuesta vacía o status!=success)
+                    AUDD_FAILURES += 1
+                    AUDD_LAST_FAILURE = time.time()
+                    logger.debug(f"   AudD logical failure count: {AUDD_FAILURES}")
+                    if AUDD_FAILURES >= AUDD_FAILURE_THRESHOLD:
+                        AUDD_ENABLED = False
+                        logger.warning("AudD deshabilitado temporalmente por fallos repetidos (circuit-breaker)")
             
             if attempt < MAX_RETRIES_AUDD - 1:
                 logger.debug(f"   AudD: no reconoció, reintentando...")
@@ -712,6 +941,15 @@ def capture_and_recognize_audd(stream_url: str, audd_token: str) -> Optional[Dic
             time.sleep(RETRY_DELAY)
     
     logger.debug(f"   AudD: todos los intentos agotados")
+    # marcar fallo general
+    try:
+        AUDD_FAILURES += 1
+        AUDD_LAST_FAILURE = time.time()
+        if AUDD_FAILURES >= AUDD_FAILURE_THRESHOLD:
+            AUDD_ENABLED = False
+            logger.warning("AudD deshabilitado temporalmente por fallos repetidos (circuit-breaker)")
+    except Exception:
+        pass
     return None
 
 
@@ -797,10 +1035,11 @@ def is_recent_duplicate(db, Cancion, emisora_id: int, artista: str, titulo: str,
 # FUNCIÓN PRINCIPAL - NIVEL PERIODÍSTICO PROFESIONAL
 # ============================================================================
 
-def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
+def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS, audd_token: str = None):
     """
     [OK] VERSIÓN PERIODÍSTICA PROFESIONAL
     NO SE RINDE. GARANTÍA 100% DE REGISTRO.
+    Usa ACRCloud (gratuito, 1000 req/mes) como primario, AudD como fallback.
     """
     try:
         from flask import current_app
@@ -813,7 +1052,10 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
         logger.info("[OK] SISTEMA PERIODÍSTICO PROFESIONAL - INICIANDO")
         logger.info("=" * 70)
         
-        audd_token = app.config.get("AUDD_API_TOKEN", "")
+        # Cargar credenciales
+        acrcloud_key = app.config.get("ACRCLOUD_ACCESS_KEY", "")
+        acrcloud_secret = app.config.get("ACRCLOUD_SECRET_KEY", "")
+        audd_token = audd_token if audd_token is not None else app.config.get("AUDD_API_TOKEN", "")
         
         emisoras = Emisora.query.all()
         
@@ -827,6 +1069,7 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
             "processed": 0,
             "registered": 0,
             "icy_success": 0,
+            "acrcloud_success": 0,
             "audd_success": 0,
             "mb_genre": 0,
             "duplicates": 0,
@@ -878,83 +1121,77 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
                 else:
                     logger.info(f"   [FAIL] No se obtuvo ICY metadata (timeout o sin metadata)")
                 
-                # PASO 2: RECONOCIMIENTO POR AUDIO (3 INTENTOS)
-                if not detected_info and fallback_to_audd and audd_token:
-                    logger.info(f"[AUDIO] Fallback: Intentando reconocimiento por audio ({MAX_RETRIES_AUDD} intentos)...")
-                    audd_result = capture_and_recognize_audd(stream_url, audd_token)
-                    
-                    if audd_result:
-                        detected_info = audd_result
-                        detected_info["fuente"] = "audd"  # Marcar fuente
-                        stats["audd_success"] += 1
-                        logger.info(f"[SUCCESS] AUDD EXITOSO: {audd_result['artist']} - {audd_result['title']}")
-                        if audd_result.get("genre") and audd_result["genre"] != "Desconocido":
-                            logger.info(f"   [GENRE] Género detectado: {audd_result['genre']}")
+                # PASO 2: RECONOCIMIENTO POR AUDIO (ACRCloud → AudD)
+                if not detected_info and fallback_to_audd:
+                    # Intentar ACRCloud primero (gratuito, 1000 req/mes)
+                    if acrcloud_key and acrcloud_secret:
+                        logger.info(f"[AUDIO] Intentando ACRCloud (gratuito, 1000 req/mes)...")
+                        acrcloud_result = capture_and_recognize_acrcloud(stream_url, acrcloud_key, acrcloud_secret)
+                        
+                        if acrcloud_result:
+                            detected_info = acrcloud_result
+                            detected_info["fuente"] = "acrcloud"
+                            stats["acrcloud_success"] += 1
+                            logger.info(f"[SUCCESS] ACRCLOUD EXITOSO: {acrcloud_result['artist']} - {acrcloud_result['title']}")
+                            if acrcloud_result.get("genre") and acrcloud_result["genre"] != "Desconocido":
+                                logger.info(f"   [GENRE] Género detectado: {acrcloud_result['genre']}")
+                        else:
+                            logger.info(f"   [FAIL] ACRCloud no pudo detectar canción")
                     else:
-                        logger.info(f"   [FAIL] AudD no pudo detectar canción")
+                        logger.info(f"[WARN]  ACRCloud no configurado (credenciales faltantes)")
+                    
+                    # Fallback a AudD si ACRCloud falló
+                    if not detected_info and audd_token:
+                        logger.info(f"[AUDIO] Fallback: Intentando AudD...")
+                        audd_result = capture_and_recognize_audd(stream_url, audd_token)
+                        
+                        if audd_result:
+                            detected_info = audd_result
+                            detected_info["fuente"] = "audd"  # Marcar fuente
+                            stats["audd_success"] += 1
+                            logger.info(f"[SUCCESS] AUDD EXITOSO: {audd_result['artist']} - {audd_result['title']}")
+                            if audd_result.get("genre") and audd_result["genre"] != "Desconocido":
+                                logger.info(f"   [GENRE] Género detectado: {audd_result['genre']}")
+                        else:
+                            logger.info(f"   [FAIL] AudD no pudo detectar canción")
                 
                 # PASO 3: OBTENER GÉNERO SI FALTA
-                if detected_info and not detected_info.get("genre"):
-                    artist = detected_info["artist"]
-                    title = detected_info["title"]
+                if detected_info:
+                    artista = detected_info["artist"]
+                    titulo = detected_info["title"]
+                    genero = detected_info.get("genre", "Desconocido")
                     
-                    # Caché
-                    cached_genre = get_genre_from_cache(artist)
-                    if cached_genre:
-                        detected_info["genre"] = cached_genre
-                        logger.info(f"   [GENRE] Género (caché): {cached_genre}")
-                    else:
-                        # MusicBrainz
-                        logger.info(f"[CHECK] Consultando género en MusicBrainz...")
-                        mb_genre = get_genre_musicbrainz(artist, title)
-                        if mb_genre:
-                            detected_info["genre"] = mb_genre
-                            save_genre_to_cache(artist, mb_genre)
-                            stats["mb_genre"] += 1
-                            logger.info(f"   [SUCCESS] Género: {mb_genre}")
+                    if not genero or genero == "Desconocido":
+                        # Caché
+                        cached_genre = get_genre_from_cache(artista)
+                        if cached_genre:
+                            detected_info["genre"] = cached_genre
+                            genero = cached_genre
+                            logger.info(f"   [GENRE] Género (caché): {cached_genre}")
                         else:
-                            detected_info["genre"] = "Desconocido"
+                            # MusicBrainz
+                            logger.info(f"[CHECK] Consultando género en MusicBrainz...")
+                            mb_genre = get_genre_musicbrainz(artista, titulo)
+                            if mb_genre:
+                                detected_info["genre"] = mb_genre
+                                genero = mb_genre
+                                save_genre_to_cache(artista, mb_genre)
+                                stats["mb_genre"] += 1
+                                logger.info(f"   [SUCCESS] Género: {mb_genre}")
+                            else:
+                                detected_info["genre"] = "Desconocido"
+                                genero = "Desconocido"
                 
-                # PASO 4: FALLBACK PREDICTIVO - GARANTÍA 100% DE DETECCIÓN
-                # Usar modelo predictivo analítico como último recurso
+                # PASO 4: SIN FALLBACK PREDICTIVO - SOLO DATOS AUTÉNTICOS
+                # Si no hay ICY metadata ni AudD/ACRCloud exitoso → NO registrar nada
                 if not detected_info:
-                    logger.info(f"[PREDICT] Activando modelo predictivo analítico...")
-                    
-                    # Obtener historial reciente para evitar duplicados
-                    recent_plays = db.session.query(Cancion).filter(
-                        Cancion.emisora_id == e.id
-                    ).order_by(Cancion.fecha_reproduccion.desc()).limit(10).all()
-                    
-                    fallback_history = [
-                        {
-                            'artista': c.artista,
-                            'titulo': c.titulo
-                        } for c in recent_plays
-                    ]
-                    
-                    # Generar predicción inteligente para la emisora
-                    predicted_song = get_song_for_station(
-                        station_name=e.nombre,
-                        fallback_history=fallback_history
-                    )
-                    
-                    detected_info = {
-                        "artist": predicted_song['artista'],
-                        "title": predicted_song['titulo'],
-                        "genre": predicted_song['genero'],
-                        "fuente": predicted_song['fuente'],  # "prediccion"
-                        "razon_prediccion": predicted_song['razon_prediccion'],
-                        "confianza_prediccion": predicted_song['confianza_prediccion'],
-                    }
-                    
-                    logger.info(f"[PREDICT] 🤖 PREDICCIÓN EXITOSA: {predicted_song['artista']} - {predicted_song['titulo']}")
-                    logger.info(f"           Confianza: {int(predicted_song['confianza'])}% | Método: {predicted_song['metodo']}")
+                    logger.warning(f"[SKIP]  NO SE PUDO VERIFICAR CANCIÓN - Sin ICY metadata ni reconocimiento ACRCloud/AudD exitoso")
+                    logger.warning(f"         (Se omite registro para garantizar autenticidad de datos)")
+                    stats["processed"] += 1
+                    e.ultima_actualizacion = datetime.now()
+                    db.session.commit()
+                    continue
 
-                
-                # PASO 5: VERIFICAR DUPLICADO
-                artista = detected_info["artist"]
-                titulo = detected_info["title"]
-                genero = detected_info.get("genre", "Desconocido")
                 
                 if is_recent_duplicate(db, Cancion, e.id, artista, titulo, dedupe_seconds):
                     logger.info(f"[SKIP]  DUPLICADO RECIENTE - Omitiendo")
@@ -1005,19 +1242,22 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
         
         # ESTADÍSTICAS FINALES
         logger.info(f"\n{'=' * 70}")
-        logger.info(f"[OK] CICLO COMPLETADO - REPORTE FINAL")
+        logger.info(f"[OK] CICLO COMPLETADO - REPORTE FINAL (SOLO DATOS AUTÉNTICOS)")
         logger.info(f"{'=' * 70}")
         logger.info(f"📊 Total procesadas:    {stats['processed']}/{len(emisoras)}")
-        logger.info(f"[SUCCESS] Registradas:         {stats['registered']}")
-        logger.info(f"[MUSIC] Éxitos ICY:          {stats['icy_success']}")
-        logger.info(f"[AUDIO] Éxitos AudD:         {stats['audd_success']}")
-        logger.info(f"[GENRE] Géneros MusicBrainz: {stats['mb_genre']}")
-        logger.info(f"[SKIP]  Duplicados:          {stats['duplicates']}")
-        logger.info(f"[ERROR] Errores:             {stats['errors']}")
+        logger.info(f"[SUCCESS] ✓ Registradas (AUTÉNTICAS): {stats['registered']}")
+        logger.info(f"  ├─ [MUSIC] ICY metadata:   {stats['icy_success']}")
+        logger.info(f"  ├─ [AUDIO] ACRCloud:       {stats['acrcloud_success']}")
+        logger.info(f"  └─ [AUDIO] AudD:           {stats['audd_success']}")
+        logger.info(f"[GENRE] MusicBrainz:          {stats['mb_genre']}")
+        logger.info(f"[SKIP]  ✗ Omitidas (sin verificación): {stats['duplicates']}")
+        logger.info(f"[ERROR] Errores de conexión:  {stats['errors']}")
         logger.info(f"{'-' * 70}")
         if stats['processed'] > 0:
             success_rate = (stats['registered'] / stats['processed']) * 100
-            logger.info(f"[OK] TASA DE ÉXITO: {success_rate:.1f}%")
+            logger.info(f"[OK] TASA DE AUTENTICIDAD: {success_rate:.1f}%")
+            logger.info(f"[NOTE] Solo se registran datos verificados (ICY, ACRCloud o AudD).")
+            logger.info(f"       ACRCloud: Gratuito, 1000 req/mes | AudD: Fallback si disponible")
         logger.info(f"{'=' * 70}\n")
         
     except Exception as exc:

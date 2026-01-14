@@ -16,7 +16,7 @@ class Config:
     # 🔹 Token de API para Audd.io
     AUDD_API_TOKEN = os.getenv(
         "AUDD_API_TOKEN",
-        "TU_TOKEN_DE_PAGO"
+        ""
     )
 
     # 🔹 Clave secreta Flask

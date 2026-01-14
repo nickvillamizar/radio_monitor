@@ -36,6 +36,8 @@ app.config.from_object(Config)
 
 # 🔹 Variables sensibles desde .env
 app.config['AUDD_API_TOKEN'] = os.getenv("AUDD_API_TOKEN")
+app.config['ACRCLOUD_ACCESS_KEY'] = os.getenv("ACRCLOUD_ACCESS_KEY")
+app.config['ACRCLOUD_SECRET_KEY'] = os.getenv("ACRCLOUD_SECRET_KEY")
 app.config['SECRET_KEY'] = os.getenv("SECRET_KEY")
 
 # 🔹 Inicializar DB
@@ -50,6 +52,7 @@ except Exception:
     CancionPorEmisora = None
     HAS_MASTER = False
 print("AUDD:", bool(app.config['AUDD_API_TOKEN']))
+print("ACRCloud:", bool(app.config['ACRCLOUD_ACCESS_KEY']))
 print("SECRET_KEY:", bool(app.config['SECRET_KEY']))
 
 # Registrar rutas de API
@@ -252,6 +255,7 @@ def monitor_loop():
             try:
                 stream_reader.actualizar_emisoras(
                     fallback_to_audd=bool(app.config.get("AUDD_API_TOKEN", "")),
+                    audd_token=app.config.get("AUDD_API_TOKEN", ""),
                     dedupe_seconds=int(app.config.get("DEDUPE_SECONDS", 300))
                 )
             except Exception as exc:
