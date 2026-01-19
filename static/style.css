@@ -249,13 +249,16 @@ button, select, input {
 
 .btn-outline {
   background-color: transparent;
-  color: var(--text-base);
-  border: 1px solid var(--essential-subdued);
+  border: none;
+  color: transparent;
+  padding: 0;
+  margin: 0;
+  box-shadow: none;
 }
 .btn-outline:hover {
-  border-color: var(--text-base);
-  transform: scale(1.05);
+  transform: none;
 }
+
 
 .btn-ghost {
   background-color: transparent;

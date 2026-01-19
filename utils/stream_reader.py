@@ -1122,7 +1122,7 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS, au
                     logger.info(f"   [FAIL] No se obtuvo ICY metadata (timeout o sin metadata)")
                 
                 # PASO 2: RECONOCIMIENTO POR AUDIO (ACRCloud → AudD)
-                if not detected_info and fallback_to_audd:
+                if not detected_info:
                     # Intentar ACRCloud primero (gratuito, 1000 req/mes)
                     if acrcloud_key and acrcloud_secret:
                         logger.info(f"[AUDIO] Intentando ACRCloud (gratuito, 1000 req/mes)...")
