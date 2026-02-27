@@ -1,21 +1,21 @@
-/* --- Variables de Color y Tipografía de Spotify --- */
+/* --- Variables de Color y Tipografía Premium --- */
 :root {
-  --font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   
-  --background-base: #080808;
-  --background-highlight:#9af894;
-  --background-press: #000;
-  --background-elevated-base: #fafafa;
-  --background-elevated-highlight: #ffffff;
+  --background-base: #0a0e27;
+  --background-card: #16213e;
+  --background-hover: #1a1f3a;
+  --background-dark: #0a0e27;
   
-  --text-base: #070707;
-  --text-subdued: #a7a7a7;
-  --text-bright-accent: #1ed760; /* Verde Spotify */
+  --text-base: #e0e6ed;
+  --text-subdued: #aaa;
+  --text-bright-accent: #00e8a2; /* Verde Premium */
   
   --essential-base: #ffffff;
   --essential-subdued: #727272;
   
-  --decorative-subdued: #393939;
+  --decorative-subdued: #2d3561;
+  --border-accent: #00e8a2;
 
   --card-radius: 8px;
   --container-padding: 24px;
@@ -87,9 +87,10 @@ a:hover, .btn-link:hover {
 
 /* --- Cabecera --- */
 .header {
-  background-color: var(--background-elevated-base);
-  padding: 16px 0;
-  border-bottom: 1px solid var(--decorative-subdued);
+  background: linear-gradient(135deg, #1a1f3a 0%, #16213e 100%);
+  border-bottom: 2px solid var(--border-accent);
+  padding: 2rem 1rem;
+  box-shadow: 0 4px 20px rgba(0, 232, 162, 0.1);
 }
 .header-grid {
   display: flex;
@@ -104,12 +105,14 @@ a:hover, .btn-link:hover {
 
 /* --- Tarjetas (Cards) --- */
 .card {
-  background-color: var(--background-elevated-base);
+  background-color: var(--background-card);
+  border: 1px solid var(--decorative-subdued);
   border-radius: var(--card-radius);
-  padding: 20px;
+  padding: 1.5rem;
   display: flex;
   flex-direction: column;
   gap: 16px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
 }
 
 .card-header {
@@ -117,9 +120,14 @@ a:hover, .btn-link:hover {
   justify-content: space-between;
   align-items: center;
   gap: 16px;
+  margin-bottom: 0.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--decorative-subdued);
 }
 .card-header h3 {
   margin-bottom: 0;
+  color: var(--border-accent);
+  font-size: 1.25rem;
 }
 .card-actions {
   display: flex;
@@ -135,9 +143,11 @@ a:hover, .btn-link:hover {
     background: none;
 }
 .card-short {
-    background-color: var(--background-elevated-base);
+    background-color: var(--background-card);
+    border: 1px solid var(--decorative-subdued);
     border-radius: var(--card-radius);
-    padding: 20px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
 }
 .compact-list {
     list-style: none;
@@ -145,7 +155,7 @@ a:hover, .btn-link:hover {
     font-size: 14px;
 }
 .compact-list li {
-    padding: 4px 0;
+    padding: 0.5rem 0;
     border-bottom: 1px solid var(--decorative-subdued);
 }
 .compact-list li:last-child {
@@ -160,13 +170,13 @@ a:hover, .btn-link:hover {
 .list-item {
   display: flex;
   align-items: center;
-  padding: 10px;
+  padding: 0.75rem;
   border-radius: 6px;
   transition: background-color 0.2s ease;
   cursor: pointer;
 }
 .list-item:hover {
-  background-color: var(--background-highlight);
+  background-color: var(--background-hover);
 }
 .list-rank {
   font-size: 1rem;
@@ -195,6 +205,7 @@ a:hover, .btn-link:hover {
 }
 .plays {
   font-weight: bold;
+  color: var(--border-accent);
 }
 
 /* --- Tablas --- */
@@ -216,16 +227,17 @@ a:hover, .btn-link:hover {
   border-bottom: 1px solid var(--decorative-subdued);
 }
 .table-compact thead th {
-  color: var(--text-subdued);
-  font-weight: 400;
+  color: var(--border-accent);
+  font-weight: 600;
   text-transform: uppercase;
   font-size: 12px;
   position: sticky;
   top: 0;
-  background-color: var(--background-elevated-base);
+  background-color: var(--background-dark);
+  border-bottom: 2px solid var(--border-accent);
 }
 .table-compact tbody tr:hover {
-  background-color: var(--background-highlight);
+  background-color: var(--background-hover);
 }
 .table-compact tbody td {
     color: var(--text-subdued);
@@ -240,23 +252,24 @@ a:hover, .btn-link:hover {
 button, select, input {
   font-family: inherit;
   font-size: 14px;
-  border-radius: 50px;
+  border-radius: 6px;
   border: 1px solid transparent;
-  padding: 8px 16px;
+  padding: 0.75rem 1.5rem;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .btn-outline {
-  background-color: transparent;
-  border: none;
-  color: transparent;
-  padding: 0;
-  margin: 0;
-  box-shadow: none;
+  background-color: var(--background-card);
+  color: var(--border-accent);
+  border: 2px solid var(--border-accent);
+  padding: 0.75rem 1.5rem;
 }
 .btn-outline:hover {
-  transform: none;
+  background-color: var(--border-accent);
+  color: var(--background-base);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 232, 162, 0.3);
 }
 
 
@@ -270,25 +283,28 @@ button, select, input {
 }
 
 .btn-primary {
-    background-color: var(--text-bright-accent);
-    color: var(--background-press);
-    font-weight: bold;
+    background-color: var(--border-accent);
+    color: var(--background-base);
+    font-weight: 600;
     border: none;
+    padding: 0.75rem 1.5rem;
 }
 .btn-primary:hover {
-    transform: scale(1.05);
-    background-color: #22f26e;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(0, 232, 162, 0.3);
+    background-color: #00d89a;
 }
 
 .select-sm, .input-sm {
-  background-color: var(--background-elevated-highlight);
+  background-color: var(--background-dark);
   color: var(--text-base);
   border: 1px solid var(--decorative-subdued);
-  padding: 6px 12px;
+  padding: 0.5rem 1rem;
 }
 .select-sm:focus, .input-sm:focus {
   outline: none;
-  border-color: var(--essential-base);
+  border-color: var(--border-accent);
+  box-shadow: 0 0 10px rgba(0, 232, 162, 0.2);
 }
 .form-inline {
     display: flex;
@@ -321,13 +337,14 @@ button, select, input {
   visibility: visible;
 }
 .modal-panel {
-  background-color: var(--background-elevated-highlight);
-  padding: 30px;
+  background-color: var(--background-card);
+  padding: 2rem;
+  border: 2px solid var(--border-accent);
   border-radius: var(--card-radius);
   width: 90%;
   max-width: 600px;
   position: relative;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
 }
 .modal-panel.large {
     max-width: 800px;
@@ -350,8 +367,9 @@ button, select, input {
     grid-template-columns: 1fr 1fr;
     gap: 10px 20px;
     margin: 20px 0;
-    padding: 16px;
-    background-color: var(--background-highlight);
+    padding: 1rem;
+    background-color: var(--background-dark);
+    border: 1px solid var(--decorative-subdued);
     border-radius: 6px;
 }
 .breakdown-list {
@@ -361,8 +379,9 @@ button, select, input {
     margin: 16px 0;
 }
 .breakdown-row {
-    background-color: var(--background-highlight);
+    background-color: var(--background-dark);
     padding: 8px 12px;
+    border: 1px solid var(--decorative-subdued);
     border-radius: 4px;
 }
 
@@ -381,15 +400,15 @@ button, select, input {
   width: 12px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--background-elevated-base);
+  background: var(--background-dark);
 }
 ::-webkit-scrollbar-thumb {
-  background-color: var(--essential-subdued);
+  background-color: var(--border-accent);
   border-radius: 20px;
-  border: 3px solid var(--background-elevated-base);
+  border: 3px solid var(--background-dark);
 }
 ::-webkit-scrollbar-thumb:hover {
-    background-color: var(--text-subdued);
+    background-color: #00d89a;
 }
 
 /* --- Media Queries --- */
@@ -431,18 +450,21 @@ button, select, input {
 }
 
 .album-card {
-  background-color: var(--background-elevated-base);
+  background-color: var(--background-card);
+  border: 1px solid var(--decorative-subdued);
   border-radius: 8px;
   padding: 12px;
   cursor: pointer;
   transition: all 0.25s ease;
   text-align: left;
   overflow: hidden;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
 }
 
 .album-card:hover {
-  background-color: var(--background-elevated-highlight);
+  background-color: var(--background-hover);
   transform: scale(1.03);
+  border-color: var(--border-accent);
 }
 
 .album-card img {
