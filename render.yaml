@@ -1,0 +1,44 @@
+# Render deployment configuration for radio_monitor
+services:
+  - type: web
+    name: radio-monitor
+    runtime: docker
+    plan: standard
+    dockerfilePath: ./Dockerfile
+    envVars:
+      # Database connection (from Neon)
+      - key: DATABASE_URL
+        scope: build,run
+        sync: false
+      # ACRCloud credentials (FREE - 1000 req/month, gratuito)
+      - key: ACRCLOUD_ACCESS_KEY
+        scope: run
+        sync: false
+      # ACRCloud secret key
+      - key: ACRCLOUD_SECRET_KEY
+        scope: run
+        sync: false
+      # AudD API token for music recognition (FALLBACK - DO NOT COMMIT)
+      - key: AUDD_API_TOKEN
+        scope: run
+        sync: false
+      # Flask secret key
+      - key: SECRET_KEY
+        scope: run
+        sync: false
+      # Monitor interval in seconds
+      - key: MONITOR_INTERVAL
+        value: "60"
+      # Flask environment
+      - key: FLASK_ENV
+        value: production
+      # Gunicorn workers
+      - key: WORKERS
+        value: "2"
+    # Auto-deploy on push to main branch
+    autoDeploy: true
+    # Build command
+    buildCommand: pip install -r requirements.txt
+    # Health check endpoint
+    healthCheckPath: /
+    # Timeout for startup (seconds) — ACRCloud/AudD may take time

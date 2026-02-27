@@ -1,4 +1,4 @@
-# archivo: app.py - Versión con filtrado por países MEJORADO y normalizado
+## app.py
 import time
 import threading
 from datetime import datetime, timedelta
@@ -13,12 +13,37 @@ from flask.cli import with_appcontext
 import click
 from sqlalchemy import func, desc, or_
 
+from dotenv import load_dotenv
+import os
+
+# 🔹 Cargar .env desde la carpeta actual
+dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
+load_dotenv(dotenv_path)
+
+
 from config import Config
 from utils import stream_reader
 from utils.db import db
 from models.emisoras import Emisora, Cancion
 
-# Importar modelos opcionales
+
+
+# 🔹 Crear app Flask
+app = Flask(__name__, static_folder="static", template_folder="templates")
+
+# 🔹 Configuración base
+app.config.from_object(Config)
+
+# 🔹 Variables sensibles desde .env
+app.config['AUDD_API_TOKEN'] = os.getenv("AUDD_API_TOKEN")
+app.config['ACRCLOUD_ACCESS_KEY'] = os.getenv("ACRCLOUD_ACCESS_KEY")
+app.config['ACRCLOUD_SECRET_KEY'] = os.getenv("ACRCLOUD_SECRET_KEY")
+app.config['SECRET_KEY'] = os.getenv("SECRET_KEY")
+
+# 🔹 Inicializar DB
+db.init_app(app)
+
+# 🔹 Importar modelos opcionales
 try:
     from models.emisoras import CancionMaster, CancionPorEmisora
     HAS_MASTER = True
@@ -26,10 +51,9 @@ except Exception:
     CancionMaster = None
     CancionPorEmisora = None
     HAS_MASTER = False
-
-app = Flask(__name__, static_folder="static", template_folder="templates")
-app.config.from_object(Config)
-db.init_app(app)
+print("AUDD:", bool(app.config['AUDD_API_TOKEN']))
+print("ACRCloud:", bool(app.config['ACRCLOUD_ACCESS_KEY']))
+print("SECRET_KEY:", bool(app.config['SECRET_KEY']))
 
 # Registrar rutas de API
 from routes.emisoras_api import emisoras_api
@@ -231,6 +255,7 @@ def monitor_loop():
             try:
                 stream_reader.actualizar_emisoras(
                     fallback_to_audd=bool(app.config.get("AUDD_API_TOKEN", "")),
+                    audd_token=app.config.get("AUDD_API_TOKEN", ""),
                     dedupe_seconds=int(app.config.get("DEDUPE_SECONDS", 300))
                 )
             except Exception as exc:
