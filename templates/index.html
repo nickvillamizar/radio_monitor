@@ -22,8 +22,8 @@
         <button id="refresh-btn" class="btn-outline">Actualizar ahora</button>
         <!-- NUEVO: Botón para ingresar canción manualmente -->
         <button id="manual-song-btn" class="btn-primary">➕ Ingresar canción</button>
-        <!-- NUEVO: Botón para ir al panel admin -->
-        <a href="/admin" class="btn-outline" style="text-decoration: none; display: inline-block;">⚙️ Administración</a>
+        <!-- Botón para ir al panel admin (oculto) -->
+        <a href="/admin" class="btn-outline" style="text-decoration: none; display: none;">⚙️ Administración</a>
       </div>
     </div>
   </header>
@@ -147,7 +147,6 @@
           <h3>Emisoras registradas</h3>
           <div class="card-actions">
             <input id="filter-station" class="input-sm" placeholder="Buscar emisora..." />
-            <button id="manage-stations" class="btn-outline">⚙️ Administrar</button>
           </div>
         </div>
 
@@ -498,7 +497,7 @@
               <div class="list-meta">
                 <div class="plays">${s.total_plays || 0}</div>
                 ${rankIndicator}
-                <button class="btn-link btn-detail" data-master-id="${masterId}" data-master-key="${masterKey}">Detalle</button>
+                <button class="btn-link btn-detail" data-master-id="${masterId}" data-master-key="${masterKey}" style="color: #00d89a; font-weight: 600;">Detalle</button>
               </div>
             </div>
           `;

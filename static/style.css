@@ -56,8 +56,11 @@ a, .btn-link {
   color: var(--text-bright-accent);
   text-decoration: none;
   cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s ease;
 }
 a:hover, .btn-link:hover {
+  color: #00d89a;
   text-decoration: underline;
 }
 
