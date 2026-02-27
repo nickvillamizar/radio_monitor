@@ -22,8 +22,8 @@
         <button id="refresh-btn" class="btn-outline">Actualizar ahora</button>
         <!-- NUEVO: Botón para ingresar canción manualmente -->
         <button id="manual-song-btn" class="btn-primary">➕ Ingresar canción</button>
-        <!-- Botón para ir al panel admin (oculto) -->
-        <a href="/admin" class="btn-outline" style="text-decoration: none; display: none;">⚙️ Administración</a>
+        <!-- Botón para ir al panel admin (Ctrl+A para acceso rápido) -->
+        <a href="/admin" class="btn-outline" style="text-decoration: none;" title="También puedes usar Ctrl+A">⚙️ Administración</a>
       </div>
     </div>
   </header>
@@ -1074,6 +1074,7 @@ document.addEventListener('click', async (e) => {
 
     // ATAJOS DE TECLADO
     document.addEventListener('keydown', (e) => {
+      // Escape para cerrar modales
       if (e.key === 'Escape') {
         closeModal();
         if (emisorasModal.classList.contains('open')) {
@@ -1084,6 +1085,12 @@ document.addEventListener('click', async (e) => {
           manualSongModal.classList.remove('open');
           manualSongModal.setAttribute('aria-hidden', 'true');
         }
+      }
+      
+      // Ctrl+A para ir a administración
+      if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
+        e.preventDefault();
+        window.location.href = '/admin';
       }
     });
 
