@@ -75,6 +75,43 @@ def listar_emisoras():
         import traceback
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+# GET — Obtener una emisora específica
+@emisoras_api.route("/api/emisoras/<int:emisora_id>", methods=["GET"])
+def obtener_emisora(emisora_id):
+    """Obtener detalles de una emisora específica."""
+    try:
+        emisora = Emisora.query.get(emisora_id)
+        if not emisora:
+            return jsonify({"error": "Emisora no encontrada"}), 404
+        
+        # Obtener datos adicionales
+        ahora = datetime.now()
+        plays_24h = db.session.query(func.count(Cancion.id)).filter(
+            Cancion.emisora_id == emisora_id,
+            Cancion.fecha_reproduccion >= ahora - timedelta(days=1)
+        ).scalar() or 0
+        
+        plays_7d = db.session.query(func.count(Cancion.id)).filter(
+            Cancion.emisora_id == emisora_id,
+            Cancion.fecha_reproduccion >= ahora - timedelta(days=7)
+        ).scalar() or 0
+        
+        return jsonify({
+            "id": emisora.id,
+            "nombre": emisora.nombre,
+            "pais": emisora.pais,
+            "ciudad": emisora.ciudad,
+            "url_stream": emisora.url_stream,
+            "sitio_web": getattr(emisora, 'sitio_web', None),
+            "ultima_actualizacion": emisora.ultima_actualizacion.isoformat() if emisora.ultima_actualizacion else None,
+            "ultima_cancion": emisora.ultima_cancion,
+            "plays_24h": plays_24h,
+            "plays_7d": plays_7d
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # POST — Crear nueva emisora
 @emisoras_api.route("/api/emisoras", methods=["POST"])
 def crear_emisora():
@@ -104,7 +141,8 @@ def crear_emisora():
             nombre=nombre,
             url_stream=url,
             pais=data.get("pais", "").strip() or None,
-            ciudad=data.get("ciudad", "").strip() or None
+            ciudad=data.get("ciudad", "").strip() or None,
+            sitio_web=data.get("sitio_web", "").strip() or None
         )
         db.session.add(emisora)
         db.session.commit()
@@ -149,6 +187,8 @@ def actualizar_emisora(emisora_id):
             emisora.pais = data["pais"].strip() or None
         if "ciudad" in data:
             emisora.ciudad = data["ciudad"].strip() or None
+        if "sitio_web" in data:
+            emisora.sitio_web = data["sitio_web"].strip() or None
         
         db.session.commit()
         return jsonify({"message": "Actualizada"}), 200

@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Radio Monitor — Panel de Administración</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: #0a0e27;
+      color: #e0e6ed;
+      line-height: 1.6;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #1a1f3a 0%, #16213e 100%);
+      border-bottom: 2px solid #00e8a2;
+      padding: 2rem 1rem;
+      box-shadow: 0 4px 20px rgba(0, 232, 162, 0.1);
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0 1rem;
+    }
+
+    .header-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 2rem;
+    }
+
+    .header-left h1 {
+      font-size: 2.5rem;
+      color: #00e8a2;
+      margin-bottom: 0.5rem;
+    }
+
+    .header-left p {
+      color: #aaa;
+      font-size: 0.95rem;
+    }
+
+    .header-right {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+    }
+
+    .btn {
+      padding: 0.75rem 1.5rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s;
+      font-size: 0.95rem;
+    }
+
+    .btn-primary {
+      background: #00e8a2;
+      color: #0a0e27;
+    }
+
+    .btn-primary:hover {
+      background: #00d89a;
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(0, 232, 162, 0.3);
+    }
+
+    .btn-secondary {
+      background: #1a1f3a;
+      color: #00e8a2;
+      border: 2px solid #00e8a2;
+    }
+
+    .btn-secondary:hover {
+      background: #00e8a2;
+      color: #0a0e27;
+    }
+
+    .btn-danger {
+      background: #ff4757;
+      color: white;
+    }
+
+    .btn-danger:hover {
+      background: #ff3838;
+    }
+
+    .main {
+      padding: 2rem 0;
+    }
+
+    .card {
+      background: #16213e;
+      border: 1px solid #2d3561;
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid #2d3561;
+    }
+
+    .card-header h2 {
+      font-size: 1.5rem;
+      color: #00e8a2;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+
+    .stat-item {
+      background: #0a0e27;
+      padding: 1.5rem;
+      border-radius: 6px;
+      border-left: 4px solid #00e8a2;
+    }
+
+    .stat-value {
+      font-size: 2.5rem;
+      color: #00e8a2;
+      font-weight: bold;
+      margin-bottom: 0.5rem;
+    }
+
+    .stat-label {
+      color: #aaa;
+      font-size: 0.9rem;
+    }
+
+    .table-container {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+    }
+
+    thead {
+      background: #0a0e27;
+      border-bottom: 2px solid #00e8a2;
+    }
+
+    th {
+      padding: 1rem;
+      text-align: left;
+      font-weight: 600;
+      color: #00e8a2;
+    }
+
+    td {
+      padding: 1rem;
+      border-bottom: 1px solid #2d3561;
+    }
+
+    tbody tr:hover {
+      background: #1a1f3a;
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 0.4rem 0.8rem;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+
+    .status-active {
+      background: #00e8a2;
+      color: #0a0e27;
+    }
+
+    .status-inactive {
+      background: #ff4757;
+      color: white;
+    }
+
+    .status-pending {
+      background: #ffa502;
+      color: white;
+    }
+
+    .action-buttons {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .btn-icon {
+      padding: 0.5rem 0.8rem;
+      font-size: 0.85rem;
+      white-space: nowrap;
+    }
+
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .modal.active {
+      display: flex;
+    }
+
+    .modal-content {
+      background: #16213e;
+      border: 2px solid #00e8a2;
+      border-radius: 8px;
+      padding: 2rem;
+      max-width: 500px;
+      width: 90%;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    }
+
+    .modal-header {
+      margin-bottom: 1.5rem;
+      padding-bottom: 1rem;
+      border-bottom: 2px solid #00e8a2;
+    }
+
+    .modal-header h3 {
+      color: #00e8a2;
+      font-size: 1.5rem;
+    }
+
+    .form-group {
+      margin-bottom: 1.5rem;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 0.5rem;
+      color: #00e8a2;
+      font-weight: 600;
+    }
+
+    .form-group input,
+    .form-group textarea,
+    .form-group select {
+      width: 100%;
+      padding: 0.75rem;
+      background: #0a0e27;
+      border: 1px solid #2d3561;
+      border-radius: 4px;
+      color: #e0e6ed;
+      font-size: 1rem;
+    }
+
+    .form-group input:focus,
+    .form-group textarea:focus,
+    .form-group select:focus {
+      outline: none;
+      border-color: #00e8a2;
+      box-shadow: 0 0 10px rgba(0, 232, 162, 0.2);
+    }
+
+    .form-group textarea {
+      resize: vertical;
+      min-height: 100px;
+    }
+
+    .modal-footer {
+      display: flex;
+      gap: 1rem;
+      justify-content: flex-end;
+      margin-top: 2rem;
+      padding-top: 1rem;
+      border-top: 1px solid #2d3561;
+    }
+
+    .modal-footer .btn {
+      flex: 1;
+      text-align: center;
+    }
+
+    .alert {
+      padding: 1rem;
+      border-radius: 6px;
+      margin-bottom: 1rem;
+      display: none;
+    }
+
+    .alert.active {
+      display: block;
+    }
+
+    .alert-success {
+      background: #00e8a2;
+      color: #0a0e27;
+      border-left: 4px solid #00c878;
+    }
+
+    .alert-error {
+      background: #ff4757;
+      color: white;
+      border-left: 4px solid #ff3838;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 2rem;
+      color: #aaa;
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 40px;
+      height: 40px;
+      border: 4px solid #2d3561;
+      border-top: 4px solid #00e8a2;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 3rem;
+      color: #aaa;
+    }
+
+    .empty-state p {
+      margin-bottom: 1.5rem;
+    }
+
+    @media (max-width: 768px) {
+      .header-content {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .header-right {
+        flex-direction: column;
+        width: 100%;
+      }
+
+      .header-right .btn {
+        width: 100%;
+      }
+
+      table {
+        font-size: 0.9rem;
+      }
+
+      th, td {
+        padding: 0.75rem 0.5rem;
+      }
+
+      .action-buttons {
+        flex-direction: column;
+      }
+
+      .btn-icon {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="container">
+      <div class="header-content">
+        <div class="header-left">
+          <h1>🎙️ Radio Monitor</h1>
+          <p>Panel de Administración — Gestiona tus emisoras</p>
+        </div>
+        <div class="header-right">
+          <button class="btn btn-primary" onclick="openAddModal()">➕ Nueva Emisora</button>
+          <button class="btn btn-secondary" onclick="window.location.href='/'">← Volver al Dashboard</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="container main">
+    <div id="alert" class="alert"></div>
+
+    <!-- ESTADÍSTICAS -->
+    <div class="stats-grid">
+      <div class="stat-item">
+        <div class="stat-value" id="stat-total">0</div>
+        <div class="stat-label">Emisoras Totales</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" id="stat-active">0</div>
+        <div class="stat-label">Activas (últimas 24h)</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" id="stat-inactive">0</div>
+        <div class="stat-label">Inactivas</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" id="stat-plays">0</div>
+        <div class="stat-label">Canciones Registradas</div>
+      </div>
+    </div>
+
+    <!-- TABLA DE EMISORAS -->
+    <div class="card">
+      <div class="card-header">
+        <h2>Emisoras Registradas</h2>
+        <button class="btn btn-primary" onclick="loadEmisoras()">🔄 Recargar</button>
+      </div>
+
+      <div id="loading" class="loading" style="display: none;">
+        <div class="spinner"></div>
+        <p style="margin-top: 1rem;">Cargando emisoras...</p>
+      </div>
+
+      <div id="empty-state" class="empty-state" style="display: none;">
+        <p>📭 No hay emisoras registradas</p>
+        <button class="btn btn-primary" onclick="openAddModal()">Agregar primera emisora</button>
+      </div>
+
+      <div id="table-container" class="table-container" style="display: none;">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Nombre</th>
+              <th>País</th>
+              <th>URL Stream</th>
+              <th>Estado</th>
+              <th>Plays (24h)</th>
+              <th>Última Actividad</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="emisoras-tbody">
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <!-- MODAL: Crear/Editar Emisora -->
+  <div id="emisora-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modal-title">Nueva Emisora</h3>
+      </div>
+
+      <form id="emisora-form" onsubmit="submitForm(event)">
+        <input type="hidden" id="emisora-id" />
+
+        <div class="form-group">
+          <label for="nombre">Nombre de la emisora *</label>
+          <input type="text" id="nombre" required maxlength="200" placeholder="Ej: La Kalle 96.3" />
+        </div>
+
+        <div class="form-group">
+          <label for="pais">País *</label>
+          <select id="pais" required>
+            <option value="">Selecciona un país</option>
+            <option value="República Dominicana">República Dominicana</option>
+            <option value="Colombia">Colombia</option>
+            <option value="Venezuela">Venezuela</option>
+            <option value="México">México</option>
+            <option value="Argentina">Argentina</option>
+            <option value="Chile">Chile</option>
+            <option value="Perú">Perú</option>
+            <option value="España">España</option>
+            <option value="Otro">Otro</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="url_stream">URL del Stream *</label>
+          <input type="url" id="url_stream" required placeholder="https://stream.ejemplo.com/radio" />
+          <small style="color: #aaa; margin-top: 0.5rem; display: block;">
+            Ingresa la URL directa del stream o la página web de la emisora
+          </small>
+        </div>
+
+        <div class="form-group">
+          <label for="sitio_web">Sitio Web (opcional)</label>
+          <input type="url" id="sitio_web" placeholder="https://ejemplo.com" />
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: Confirmar Eliminación -->
+  <div id="delete-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>⚠️ Confirmar Eliminación</h3>
+      </div>
+
+      <p style="margin-bottom: 1.5rem; color: #ccc;">
+        ¿Estás seguro de que quieres eliminar la emisora <strong id="delete-name"></strong>? 
+        Esta acción no se puede deshacer.
+      </p>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeDeleteModal()">Cancelar</button>
+        <button type="button" class="btn btn-danger" onclick="confirmDelete()">Eliminar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentEditId = null;
+    let deleteTargetId = null;
+
+    // Cargar emisoras al iniciar
+    document.addEventListener('DOMContentLoaded', () => {
+      loadEmisoras();
+      setInterval(loadEmisoras, 30000); // Recargar cada 30 segundos
+    });
+
+    // Cargar lista de emisoras
+    async function loadEmisoras() {
+      const loading = document.getElementById('loading');
+      const table = document.getElementById('table-container');
+      const empty = document.getElementById('empty-state');
+
+      loading.style.display = 'block';
+      table.style.display = 'none';
+      empty.style.display = 'none';
+
+      try {
+        const response = await fetch('/api/emisoras');
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const emisoras = await response.json();
+        loading.style.display = 'none';
+
+        if (!emisoras || emisoras.length === 0) {
+          empty.style.display = 'block';
+          updateStats(0, 0, 0, 0);
+          return;
+        }
+
+        // Actualizar estadísticas
+        const activas = emisoras.filter(e => e.estado === 'activo_hoy').length;
+        const inactivas = emisoras.filter(e => e.estado === 'sin_datos' || e.estado.includes('inactivo')).length;
+        let totalPlays = 0;
+
+        // Renderizar tabla
+        const tbody = document.getElementById('emisoras-tbody');
+        tbody.innerHTML = '';
+
+        for (const emisora of emisoras) {
+          totalPlays += emisora.plays_24h || 0;
+
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td><strong>#${emisora.id}</strong></td>
+            <td>${escapeHtml(emisora.nombre)}</td>
+            <td>${escapeHtml(emisora.pais)}</td>
+            <td><code style="font-size: 0.85rem; color: #00e8a2;">${truncateUrl(emisora.url_stream)}</code></td>
+            <td>
+              <span class="status-badge ${getStatusClass(emisora.estado)}">
+                ${formatStatus(emisora.estado)}
+              </span>
+            </td>
+            <td><strong>${emisora.plays_24h || 0}</strong></td>
+            <td style="font-size: 0.9rem;">
+              ${formatLastUpdate(emisora.ultima_actualizacion)}
+            </td>
+            <td>
+              <div class="action-buttons">
+                <button class="btn btn-secondary btn-icon" onclick="openEditModal(${emisora.id})">
+                  ✏️ Editar
+                </button>
+                <button class="btn btn-danger btn-icon" onclick="openDeleteModal(${emisora.id}, '${escapeHtml(emisora.nombre)}')">
+                  🗑️ Eliminar
+                </button>
+              </div>
+            </td>
+          `;
+          tbody.appendChild(row);
+        }
+
+        table.style.display = 'block';
+        updateStats(emisoras.length, activas, inactivas, totalPlays);
+      } catch (error) {
+        loading.style.display = 'none';
+        showAlert(`Error cargando emisoras: ${error.message}`, 'error');
+      }
+    }
+
+    // Abrir modal para agregar
+    function openAddModal() {
+      currentEditId = null;
+      document.getElementById('emisora-form').reset();
+      document.getElementById('emisora-id').value = '';
+      document.getElementById('modal-title').textContent = '➕ Nueva Emisora';
+      document.getElementById('emisora-modal').classList.add('active');
+    }
+
+    // Abrir modal para editar
+    async function openEditModal(id) {
+      currentEditId = id;
+
+      try {
+        const response = await fetch(`/api/emisoras/${id}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const emisora = await response.json();
+
+        document.getElementById('emisora-id').value = emisora.id;
+        document.getElementById('nombre').value = emisora.nombre;
+        document.getElementById('pais').value = emisora.pais;
+        document.getElementById('url_stream').value = emisora.url_stream;
+        document.getElementById('sitio_web').value = emisora.sitio_web || '';
+        document.getElementById('modal-title').textContent = `✏️ Editar: ${emisora.nombre}`;
+
+        document.getElementById('emisora-modal').classList.add('active');
+      } catch (error) {
+        showAlert(`Error cargando emisora: ${error.message}`, 'error');
+      }
+    }
+
+    // Enviar formulario
+    async function submitForm(event) {
+      event.preventDefault();
+
+      const id = document.getElementById('emisora-id').value;
+      const nombre = document.getElementById('nombre').value.trim();
+      const pais = document.getElementById('pais').value.trim();
+      const url_stream = document.getElementById('url_stream').value.trim();
+      const sitio_web = document.getElementById('sitio_web').value.trim();
+
+      if (!nombre || !pais || !url_stream) {
+        showAlert('Por favor completa todos los campos obligatorios', 'error');
+        return;
+      }
+
+      const method = id ? 'PUT' : 'POST';
+      const endpoint = id ? `/api/emisoras/${id}` : '/api/emisoras';
+
+      const payload = { nombre, pais, url_stream };
+      if (sitio_web) payload.sitio_web = sitio_web;
+
+      try {
+        const response = await fetch(endpoint, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || `HTTP ${response.status}`);
+        }
+
+        closeModal();
+        showAlert(id ? '✅ Emisora actualizada correctamente' : '✅ Emisora creada correctamente', 'success');
+        await loadEmisoras();
+      } catch (error) {
+        showAlert(`Error: ${error.message}`, 'error');
+      }
+    }
+
+    // Abrir modal de eliminación
+    function openDeleteModal(id, nombre) {
+      deleteTargetId = id;
+      document.getElementById('delete-name').textContent = nombre;
+      document.getElementById('delete-modal').classList.add('active');
+    }
+
+    function closeDeleteModal() {
+      deleteTargetId = null;
+      document.getElementById('delete-modal').classList.remove('active');
+    }
+
+    // Confirmar eliminación
+    async function confirmDelete() {
+      if (!deleteTargetId) return;
+
+      try {
+        const response = await fetch(`/api/emisoras/${deleteTargetId}`, {
+          method: 'DELETE'
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || `HTTP ${response.status}`);
+        }
+
+        closeDeleteModal();
+        showAlert('✅ Emisora eliminada correctamente', 'success');
+        await loadEmisoras();
+      } catch (error) {
+        showAlert(`Error: ${error.message}`, 'error');
+      }
+    }
+
+    // Cerrar modal
+    function closeModal() {
+      document.getElementById('emisora-modal').classList.remove('active');
+      document.getElementById('emisora-form').reset();
+    }
+
+    // Actualizar estadísticas
+    function updateStats(total, activas, inactivas, plays) {
+      document.getElementById('stat-total').textContent = total;
+      document.getElementById('stat-active').textContent = activas;
+      document.getElementById('stat-inactive').textContent = inactivas;
+      document.getElementById('stat-plays').textContent = plays.toLocaleString();
+    }
+
+    // Mostrar alerta
+    function showAlert(message, type) {
+      const alert = document.getElementById('alert');
+      alert.textContent = message;
+      alert.classList.remove('alert-success', 'alert-error');
+      alert.classList.add(`alert-${type}`, 'active');
+      setTimeout(() => alert.classList.remove('active'), 5000);
+    }
+
+    // Utilidades
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function truncateUrl(url) {
+      return url ? (url.length > 40 ? url.substring(0, 40) + '...' : url) : 'N/A';
+    }
+
+    function formatStatus(estado) {
+      const map = {
+        'activo_hoy': '🟢 Hoy',
+        'activo_ayer': '🟢 Ayer',
+        'activo_semana': '🟡 Esta semana',
+        'inactivo_mes': '🟠 Hace +semana',
+        'inactivo_mucho': '🔴 Hace +mes',
+        'sin_datos': '⚪ Sin datos'
+      };
+      return map[estado] || estado;
+    }
+
+    function getStatusClass(estado) {
+      if (estado === 'activo_hoy' || estado === 'activo_ayer' || estado === 'activo_semana') {
+        return 'status-active';
+      } else if (estado.includes('inactivo')) {
+        return 'status-inactive';
+      }
+      return 'status-pending';
+    }
+
+    function formatLastUpdate(timestamp) {
+      if (!timestamp) return 'Nunca';
+      const date = new Date(timestamp);
+      const now = new Date();
+      const diff = Math.floor((now - date) / 1000);
+
+      if (diff < 60) return 'Hace poco';
+      if (diff < 3600) return `Hace ${Math.floor(diff / 60)}m`;
+      if (diff < 86400) return `Hace ${Math.floor(diff / 3600)}h`;
+      if (diff < 604800) return `Hace ${Math.floor(diff / 86400)}d`;
+
+      return date.toLocaleDateString('es-ES');
+    }
+
+    // Cerrar modales al presionar Escape
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        closeModal();
+        closeDeleteModal();
+      }
+    });
+  </script>
+</body>
+</html>

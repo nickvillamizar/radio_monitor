@@ -1,0 +1,261 @@
+╔════════════════════════════════════════════════════════════════════════════════╗
+║              CHECKLIST DE VERIFICACIÓN - PANEL DE ADMINISTRACIÓN                 ║
+║                   Verifica que todo funcione correctamente                       ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+INSTRUCCIONES:
+1. Ve a http://localhost:5000/admin
+2. Completa cada verificación marcando [✓] o [✗]
+3. Si algo no funciona, anotalo en "NOTAS"
+
+═══════════════════════════════════════════════════════════════════════════════════
+                    1️⃣  ACCESO Y CARGA DEL PANEL
+═══════════════════════════════════════════════════════════════════════════════════
+
+[  ] La página /admin carga sin errores
+[  ] Se ve el header con "Panel de Administración"
+[  ] Se ve el grid de estadísticas en la parte superior
+[  ] Se ve la tabla de emisoras
+[  ] Los datos se cargan sin demora (< 5 segundos)
+[  ] El tema dark es visible (fondo oscuro, texto claro)
+
+NOTAS: ___________________________________________________________________
+
+═══════════════════════════════════════════════════════════════════════════════════
+                    2️⃣  ESTADÍSTICAS EN TIEMPO REAL
+═══════════════════════════════════════════════════════════════════════════════════
+
+El grid superior debe mostrar 4 números:
+
+[  ] "Total de Emisoras" → Muestra un número (11 o similar)
+[  ] "Activas (24h)" → Muestra un número (0-11)
+[  ] "Inactivas" → Muestra un número
+[  ] "Total de Plays" → Muestra un número (ej: 694)
+
+Verificación: Total + Inactivas = Activas (ej: 4 activas + 7 inactivas = 11 total)
+
+[  ] Las sumas coinciden correctamente
+
+NOTAS: ___________________________________________________________________
+
+═══════════════════════════════════════════════════════════════════════════════════
+                    3️⃣  TABLA DE EMISORAS
+═══════════════════════════════════════════════════════════════════════════════════
+
+La tabla debe tener estas columnas:
+
+[  ] ID
+[  ] Nombre
+[  ] País
+[  ] URL Stream
+[  ] Estado
+[  ] Plays (24h)
+[  ] Última Actividad
+[  ] Acciones (botones ✏️ y 🗑️)
+
+La tabla debe mostrar:
+[  ] Al menos 10 emisoras listadas
+[  ] Cada emisora con su información
+[  ] Algunos estados como "Activa (24h)" en verde
+[  ] Algunos estados como "Inactiva" en rojo/gris
+
+NOTAS: ___________________________________________________________________
+
+═══════════════════════════════════════════════════════════════════════════════════
+                    4️⃣  CREAR NUEVA EMISORA
+═══════════════════════════════════════════════════════════════════════════════════
+
+[  ] Existe botón "➕ Añadir Nueva Emisora"
+[  ] Al hacer click, se abre un modal
+[  ] El modal tiene título "Nueva Emisora"
+[  ] Existen campos:
+     [  ] Nombre (text)
+     [  ] País (text)
+     [  ] URL del Stream (text)
+     [  ] Sitio Web (text)
+[  ] Existen botones:
+     [  ] "Cancelar"
+     [  ] "Crear"
+
+Crear emisora de prueba:
+[  ] Nombre: "TEST Radio 99.9"
+[  ] País: "Test Country"
+[  ] URL: "https://test.example.com/stream.m3u8"
+[  ] Sitio Web: "https://test.example.com"
+[  ] Haz click en "Crear"
+
+Resultado esperado:
+[  ] Aparece alerta verde "Emisora creada correctamente"
+[  ] La alerta desaparece después de 5 segundos
+[  ] La tabla se actualiza
+[  ] La emisora de prueba aparece en la lista
+
+NOTAS: ___________________________________________________________________
+
+═══════════════════════════════════════════════════════════════════════════════════
+                    5️⃣  EDITAR EMISORA
+═══════════════════════════════════════════════════════════════════════════════════
+
+[  ] Encuentra la emisora que acabas de crear (TEST Radio 99.9)
+[  ] Haz click en el botón "✏️ Editar" en la columna Acciones
+[  ] Se abre modal "Editar Emisora"
+[  ] Los campos están pre-llenados con los datos actuales:
+     [  ] Nombre: "TEST Radio 99.9"
+     [  ] País: "Test Country"
+     [  ] URL: "https://test.example.com/stream.m3u8"
+     [  ] Sitio Web: "https://test.example.com"
+
+Modifica los datos:
+[  ] Nombre: Cambia a "TEST Radio UPDATED"
+[  ] País: Cambia a "Updated Country"
+[  ] Haz click en "Actualizar"
+
+Resultado esperado:
+[  ] Aparece alerta verde "Emisora actualizada correctamente"
+[  ] La tabla se actualiza
+[  ] Los cambios se reflejan en la tabla
+
+NOTAS: ___________________________________________________________________
+
+═══════════════════════════════════════════════════════════════════════════════════
+                    6️⃣  ELIMINAR EMISORA
+═══════════════════════════════════════════════════════════════════════════════════
+
+[  ] Encuentra la emisora TEST en la tabla
+[  ] Haz click en el botón "🗑️ Eliminar"
+[  ] Se abre un modal de confirmación
+[  ] El modal dice "¿Estás seguro que deseas eliminar esta emisora?"
+[  ] Hay botones:
+     [  ] "Cancelar"
+     [  ] "Eliminar" (en rojo)
+
+[  ] Haz click en "Eliminar"
+
+Resultado esperado:
+[  ] Aparece alerta verde "Emisora eliminada correctamente"
+[  ] La emisora desaparece de la tabla
+[  ] La tabla se recarga sin la emisora TEST
+
+NOTAS: ___________________________________________________________________
+
+═══════════════════════════════════════════════════════════════════════════════════
+                    7️⃣  AUTO-ACTUALIZACIÓN
+═══════════════════════════════════════════════════════════════════════════════════
+
+[  ] Observa la tabla sin hacer cambios
+[  ] Espera 30 segundos
+[  ] La tabla se actualiza automáticamente sin refrescar la página
+[  ] Los números de "Plays (24h)" pueden cambiar
+[  ] Los tiempos de "Última Actividad" se actualizan
+
+NOTAS: ___________________________________________________________________
+
+═══════════════════════════════════════════════════════════════════════════════════
+                    8️⃣  VALIDACIONES
+═══════════════════════════════════════════════════════════════════════════════════
+
+Prueba crear una emisora SIN llenar campos:
+
+[  ] Intenta crear sin nombre → Debería mostrar error
+[  ] Intenta crear sin país → Debería mostrar error
+[  ] Intenta crear sin URL → Debería mostrar error
+
+Prueba crear con URL inválida:
+
+[  ] Intenta con "texto random" → Debería mostrar error
+[  ] Intenta con "http://valido.com" → Debería permitir (es válida)
+
+NOTAS: ___________________________________________________________________
+
+═══════════════════════════════════════════════════════════════════════════════════
+                    9️⃣  MANUAL DE USUARIO
+═══════════════════════════════════════════════════════════════════════════════════
+
+[  ] En la página /admin, existe un link a documentación
+[  ] Accede a http://localhost:5000/manual
+[  ] Se carga una página con documentación completa
+[  ] La página tiene:
+     [  ] Título "📊 Panel de Administración"
+     [  ] Secciones de ayuda
+     [  ] Guías paso a paso
+     [  ] Botón para volver al panel
+
+NOTAS: ___________________________________________________________________
+
+═══════════════════════════════════════════════════════════════════════════════════
+                    🔟  FUNCIONALIDAD EN DIFERENTES DISPOSITIVOS
+═══════════════════════════════════════════════════════════════════════════════════
+
+Desktop (1920x1080):
+[  ] Panel se ve correctamente
+[  ] Todos los elementos están visibles
+[  ] No hay scroll horizontal
+
+Tablet (768x1024):
+[  ] Panel se adapta al ancho
+[  ] Tabla es legible
+[  ] Botones son clickeables
+
+Móvil (375x812):
+[  ] Panel es completamente usable
+[  ] Tabla se adapta (puede ser horizontal scroll)
+[  ] Botones están accesibles
+[  ] Modales funcionan
+
+NOTAS: ___________________________________________________________________
+
+═══════════════════════════════════════════════════════════════════════════════════
+                        RESUMEN DE VERIFICACIÓN
+═══════════════════════════════════════════════════════════════════════════════════
+
+Cuenta el número de [✓] completadas: _____ de 50 aproximadamente
+
+RANGO DE EVALUACIÓN:
+45-50: ✅ Excelente - Sistema 100% funcional
+40-44: ✅ Muy bueno - Sistema operativo con detalles menores
+35-39: ⚠️  Bueno - Sistema funcional con algunos problemas
+<35:   ❌ Necesita revisión
+
+ESTADO GENERAL: □ Excelente  □ Muy Bueno  □ Bueno  □ Necesita Revisión
+
+═══════════════════════════════════════════════════════════════════════════════════
+                        PROBLEMAS ENCONTRADOS
+═══════════════════════════════════════════════════════════════════════════════════
+
+(Anotaciones para problemas específicos encontrados)
+
+1. ________________________________________________________________
+
+2. ________________________________________________________________
+
+3. ________________________________________________________________
+
+4. ________________________________________________________________
+
+═══════════════════════════════════════════════════════════════════════════════════
+                        NOTAS ADICIONALES
+═══════════════════════════════════════════════════════════════════════════════════
+
+________________________________________________________________
+
+________________________________________________________________
+
+________________________________________________________________
+
+═══════════════════════════════════════════════════════════════════════════════════
+
+Verificación completada: _____________ (fecha)
+
+Realizado por: _________________________
+
+Firma: _________________________________
+
+═══════════════════════════════════════════════════════════════════════════════════
+
+✅ Este checklist puede ser usado para:
+   • Verificación antes de entregar a cliente
+   • Validación de nuevos features
+   • Auditoría de calidad
+   • Documentación de issues
+
+═══════════════════════════════════════════════════════════════════════════════════

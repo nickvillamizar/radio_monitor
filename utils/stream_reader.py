@@ -13,8 +13,8 @@ from urllib.parse import urlparse, urljoin
 from typing import Optional, Tuple, Dict, Any
 import random
 
-# Importar modelo predictivo
-from .predictive_model import predict_song_now, get_song_for_station
+# NOTE: Predictive model DISABLED - Only REAL detection (ICY + AudD)
+# No synthetic/predicted data. Only actual metadata from streams.
 
 # ============================================================================
 # CONFIGURACIÓN AGRESIVA - NO NOS RENDIMOS
@@ -106,8 +106,31 @@ def clean_stream_title(text: str) -> str:
         if text_lower.startswith(prefix):
             text = text[len(prefix):].strip()
             text_lower = text.lower()
-    
-    return text
+
+    # Eliminar comillas simples o dobles al inicio/fin
+    try:
+        text = text.strip('"\'')
+    except Exception:
+        # Fallback seguro
+        text = text.strip('"')
+
+    # Quitar contenido entre paréntesis si parece ser nota (Official, Live, Video, Radio)
+    text = re.sub(r"\([^)]*(official|video|live|radio|fm|mix|remix)[^)]*\)", "", text, flags=re.IGNORECASE)
+
+    # Quitar sufijos obvios de marca/estacion: ' - Radio', ' | Live', etc.
+    # Si el sufijo contiene palabras como radio/fm/stream, asumimos que no es parte de la canción
+    if " - " in text:
+        left, right = text.rsplit(" - ", 1)
+        if re.search(r"\b(radio|fm|stream|online|live|emisora)\b", right, re.IGNORECASE):
+            text = left.strip()
+
+    if " | " in text:
+        left, right = text.rsplit(" | ", 1)
+        if re.search(r"\b(radio|fm|stream|online|live|emisora)\b", right, re.IGNORECASE):
+            text = left.strip()
+
+    # Normalizar espacios y devolver
+    return normalize_string(text)
 
 
 def is_valid_metadata(text: str) -> bool:
@@ -200,6 +223,25 @@ def parse_title_artist(full_title: str) -> Tuple[str, str]:
 def get_random_user_agent() -> str:
     """Retorna un User-Agent aleatorio."""
     return random.choice(USER_AGENTS)
+
+
+def _save_emisora_diagnosis(db, emisora, diagnosis: str, url_valid: bool = None, is_streaming: bool = None):
+    """Helper para guardar diagnóstico de emisora de forma segura."""
+    try:
+        if url_valid is not None:
+            emisora.url_valida = bool(url_valid)
+        if is_streaming is not None:
+            emisora.es_stream_activo = bool(is_streaming)
+        emisora.diagnostico = diagnosis
+        emisora.ultima_validacion = datetime.now()
+        emisora.ultima_actualizacion = datetime.now()
+        db.session.add(emisora)
+        db.session.commit()
+    except Exception:
+        try:
+            db.session.rollback()
+        except:
+            pass
 
 
 # ============================================================================
@@ -357,7 +399,7 @@ def extract_radionet_stream(url: str) -> Optional[str]:
 
 
 def extract_generic_stream(page_url: str) -> Optional[str]:
-    """Extractor genérico AGRESIVO."""
+    """Extractor genérico ULTRA AGRESIVO - busca en toda la página."""
     try:
         headers = {'User-Agent': get_random_user_agent()}
         
@@ -372,22 +414,31 @@ def extract_generic_stream(page_url: str) -> Optional[str]:
                     continue
                 return None
         
-        # Buscar TODOS los patrones posibles
+        # PATRONES AGRESIVOS para encontrar streams
         stream_patterns = [
-            # Extensiones de audio
+            # URLs directas de audio
             r'https?://[^\s"\'<>]+\.(?:mp3|aac|ogg|opus|pls|m3u|m3u8|xspf)',
-            # Puertos de streaming
-            r'https?://[^\s"\'<>]+:[0-9]{4,5}/[^\s"\'<>]*',
-            # Atributos comunes
+            # Puertos típicos de streaming (icecast/shoutcast)
+            r'https?://[^\s"\'<>]+:[0-9]{4,5}(?:/[^\s"\'<>]*)?',
+            # Atributos JSON/HTML comunes
             r'"streamUrl"\s*:\s*"([^"]+)"',
             r'"stream"\s*:\s*"([^"]+)"',
             r'"audioUrl"\s*:\s*"([^"]+)"',
+            r'"url"\s*:\s*"(https?://[^"]+)"',
+            r'"src"\s*:\s*"(https?://[^"]+)"',
             r'data-stream="([^"]+)"',
+            r'data-url="([^"]+)"',
             r'src="(https?://[^"]+\.(?:mp3|m3u8|aac))"',
-            r'href="(https?://[^"]+\.(?:pls|m3u))"',
-            # Icecast/Shoutcast
-            r'https?://[^\s"\'<>]*icecast[^\s"\'<>]*',
-            r'https?://[^\s"\'<>]*shoutcast[^\s"\'<>]*',
+            r'href="(https?://[^"]+\.(?:pls|m3u|m3u8))"',
+            # Icecast/Shoutcast directo
+            r'(https?://[^\s"\'<>]*(?:icecast|shoutcast)[^\s"\'<>]*)',
+            # RadioBrowser/stream.radiotime patterns
+            r'(https?://stream\.[^\s"\'<>]+)',
+            r'(https?://[^\s"\'<>]*\.(?:hostlagarto|streaming|radios-online)[^\s"\'<>]*)',
+            # Cualquier http URL que termine en /stream o /listen
+            r'(https?://[^\s"\'<>]+/(?:stream|listen|audio|play)[^\s"\'<>]*)',
+            # URLs con IP:PORT
+            r'(https?://\d+\.\d+\.\d+\.\d+:[0-9]{4,5}[^\s"\'<>]*)',
         ]
         
         found_urls = set()
@@ -395,14 +446,32 @@ def extract_generic_stream(page_url: str) -> Optional[str]:
             matches = re.findall(pattern, content, re.IGNORECASE)
             for match in matches:
                 url = match if isinstance(match, str) else match[0]
-                found_urls.add(url)
+                # Limpiar URL
+                url = url.strip().rstrip('",;\']')
+                if url and len(url) > 10:  # Descartar URLs muy cortas
+                    found_urls.add(url)
         
-        # Validar cada URL encontrada
-        for potential_url in found_urls:
+        # ORDENAR por probabilidad
+        def url_quality_score(url: str) -> int:
+            score = 0
+            if any(x in url.lower() for x in ['stream', 'audio', 'play', 'listen']):
+                score += 100
+            if any(x in url.lower() for x in ['icecast', 'shoutcast', 'hostlagarto']):
+                score += 50
+            if ':' in url and any(c.isdigit() for c in url.split(':')[-1]):  # Tiene puerto
+                score += 30
+            if url.endswith(('.mp3', '.aac', '.ogg', '.m3u', '.m3u8', '.pls')):
+                score += 20
+            return score
+        
+        sorted_urls = sorted(found_urls, key=url_quality_score, reverse=True)
+        
+        # Validar cada URL encontrada (de mejor a peor)
+        for potential_url in sorted_urls:
             try:
                 test_resp = requests.head(potential_url, timeout=8, allow_redirects=True)
                 if test_resp.status_code == 200:
-                    logger.info(f"[OK] Stream generico: {potential_url}")
+                    logger.info(f"[OK] Stream generico encontrado: {potential_url}")
                     return potential_url
             except:
                 continue
@@ -439,8 +508,8 @@ def get_real_stream_url(url: str) -> str:
         except:
             pass
     
-    # Si tiene puerto de streaming típico
-    if re.search(r':[0-9]{4,5}/', url):
+    # Si tiene puerto de streaming típico (con o sin slash)
+    if re.search(r':[0-9]{2,5}(/|$)', url):
         STREAM_URL_CACHE[url] = url
         return url
     
@@ -471,6 +540,32 @@ def get_real_stream_url(url: str) -> str:
         logger.info("[WRENCH] Detectado Zeno.FM")
         # Zeno es más simple - su URL suele ser ya válida
         real_url = url
+
+    # Si no se obtuvo real_url, intentar extractores genéricos y específicos
+    if not real_url:
+        try:
+            # Probar Zeno extractor
+            z = extract_zeno_stream(url)
+            if z:
+                real_url = z
+        except Exception:
+            pass
+
+    if not real_url:
+        try:
+            rn = extract_radionet_stream(url)
+            if rn:
+                real_url = rn
+        except Exception:
+            pass
+
+    if not real_url:
+        try:
+            gen = extract_generic_stream(url)
+            if gen:
+                real_url = gen
+        except Exception:
+            pass
     
     # Cachear resultado - siempre usar algo
     final_url = real_url if real_url else url
@@ -850,6 +945,24 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
                 logger.info(f"[CHECK] Obteniendo stream real...")
                 stream_url = get_real_stream_url(url)
                 logger.info(f"   URL final: {stream_url[:80]}...")
+
+                # Comprobar alcanzabilidad rápida (HEAD)
+                reachable = True
+                try:
+                    h = requests.head(stream_url, timeout=5, allow_redirects=True)
+                    if h.status_code >= 400:
+                        reachable = False
+                        logger.info(f"   [HEAD] Código {h.status_code} al verificar stream")
+                except Exception as _:
+                    reachable = False
+                    logger.info("   [HEAD] No alcanzable (excepción en HEAD)")
+
+                if not reachable:
+                    # Guardar diagnóstico pero no interrumpir (seguimos con intentos y fallback)
+                    try:
+                        _save_emisora_diagnosis(db, e, f"Stream no accesible (HEAD fallo)")
+                    except Exception:
+                        pass
                 
                 detected_info = None
                 
@@ -859,22 +972,24 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
                 
                 if icy_title:
                     logger.info(f"   [RAW] Obtenido: {icy_title[:100]}")
-                    if is_valid_metadata(icy_title):
-                        artista, titulo = parse_title_artist(icy_title)
-                        
-                        if is_valid_metadata(artista) and is_valid_metadata(titulo):
-                            detected_info = {
-                                "artist": artista,
-                                "title": titulo,
-                                "genre": None,
-                                "fuente": "icy"
-                            }
-                            stats["icy_success"] += 1
-                            logger.info(f"[SUCCESS] ICY EXITOSO: {artista} - {titulo}")
-                        else:
-                            logger.info(f"   [REJECT] Artista o titulo inválido: '{artista}' - '{titulo}'")
+                    # Intentar parsear artista/título incluso si no está en formato perfecto
+                    artista, titulo = parse_title_artist(icy_title)
+
+                    # Aceptar si al menos el título es válido; artista puede faltar
+                    if is_valid_metadata(titulo):
+                        if not is_valid_metadata(artista):
+                            artista = "Desconocido"
+
+                        detected_info = {
+                            "artist": artista,
+                            "title": titulo,
+                            "genre": None,
+                            "fuente": "icy"
+                        }
+                        stats["icy_success"] += 1
+                        logger.info(f"[SUCCESS] ICY EXITOSO: {artista} - {titulo}")
                     else:
-                        logger.info(f"   [REJECT] ICY metadata rechazada por validación (genérica/falsa)")
+                        logger.info(f"   [REJECT] ICY metadata rechazada por validación (genérica/falsa): '{icy_title}'")
                 else:
                     logger.info(f"   [FAIL] No se obtuvo ICY metadata (timeout o sin metadata)")
                 
@@ -915,41 +1030,14 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
                         else:
                             detected_info["genre"] = "Desconocido"
                 
-                # PASO 4: FALLBACK PREDICTIVO - GARANTÍA 100% DE DETECCIÓN
-                # Usar modelo predictivo analítico como último recurso
+                # PASO 4: Si no hay detección real, registrar y continuar (SIN predictor)
                 if not detected_info:
-                    logger.info(f"[PREDICT] Activando modelo predictivo analítico...")
-                    
-                    # Obtener historial reciente para evitar duplicados
-                    recent_plays = db.session.query(Cancion).filter(
-                        Cancion.emisora_id == e.id
-                    ).order_by(Cancion.fecha_reproduccion.desc()).limit(10).all()
-                    
-                    fallback_history = [
-                        {
-                            'artista': c.artista,
-                            'titulo': c.titulo
-                        } for c in recent_plays
-                    ]
-                    
-                    # Generar predicción inteligente para la emisora
-                    predicted_song = get_song_for_station(
-                        station_name=e.nombre,
-                        fallback_history=fallback_history
-                    )
-                    
-                    detected_info = {
-                        "artist": predicted_song['artista'],
-                        "title": predicted_song['titulo'],
-                        "genre": predicted_song['genero'],
-                        "fuente": predicted_song['fuente'],  # "prediccion"
-                        "razon_prediccion": predicted_song['razon_prediccion'],
-                        "confianza_prediccion": predicted_song['confianza_prediccion'],
-                    }
-                    
-                    logger.info(f"[PREDICT] 🤖 PREDICCIÓN EXITOSA: {predicted_song['artista']} - {predicted_song['titulo']}")
-                    logger.info(f"           Confianza: {int(predicted_song['confianza'])}% | Método: {predicted_song['metodo']}")
-
+                    logger.info(f"[SKIP]  NO DETECTADA - Sin ICY/AudD válidos. (No se usa predictor analítico)")
+                    stats["not_detected"] += 1
+                    e.ultima_actualizacion = datetime.now()
+                    db.session.commit()
+                    stats["processed"] += 1
+                    continue
                 
                 # PASO 5: VERIFICAR DUPLICADO
                 artista = detected_info["artist"]
@@ -987,6 +1075,12 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
                 e.ultima_cancion = f"{artista} - {titulo}"
                 e.ultima_actualizacion = datetime.now()
                 db.session.commit()
+
+                # Registrar diagnóstico exitoso
+                try:
+                    _save_emisora_diagnosis(db, e, f"Detectado via {detected_info.get('fuente', 'unknown')}", url_valid=True, is_streaming=True)
+                except Exception:
+                    pass
                 
                 stats["registered"] += 1
                 logger.info(f"[SUCCESS] [SUCCESS] [SUCCESS] REGISTRADO EXITOSAMENTE [SUCCESS] [SUCCESS] [SUCCESS]")
@@ -994,10 +1088,18 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
                 stats["processed"] += 1
                 
             except Exception as exc:
-                logger.error(f"[ERROR] ERROR PROCESANDO {e.nombre}: {exc}")
+                try:
+                    name = e.nombre
+                except Exception:
+                    name = 'emisora'
+                logger.error(f"[ERROR] ERROR PROCESANDO {name}: {exc}")
                 import traceback
                 traceback.print_exc()
                 stats["errors"] += 1
+                try:
+                    _save_emisora_diagnosis(db, e, f"Error procesamiento: {str(exc)[:200]}", url_valid=False, is_streaming=False)
+                except Exception:
+                    pass
                 try:
                     db.session.rollback()
                 except:

@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manual de Usuario - Panel de Administración</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #0a0e27;
+            color: #e0e0e0;
+            line-height: 1.6;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        
+        .back-button {
+            display: inline-block;
+            background: #252d47;
+            color: #00e8a2;
+            padding: 8px 16px;
+            border-radius: 4px;
+            text-decoration: none;
+            font-weight: bold;
+            margin-bottom: 20px;
+            border: 1px solid #00e8a2;
+            transition: all 0.3s ease;
+        }
+        
+        .back-button:hover {
+            background: #00e8a2;
+            color: #0a0e27;
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding: 30px;
+            background: linear-gradient(135deg, #00e8a2, #00a870);
+            border-radius: 10px;
+            color: #0a0e27;
+        }
+        
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+        
+        .section {
+            background: #1a1f3a;
+            padding: 25px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            border-left: 4px solid #00e8a2;
+        }
+        
+        h2 {
+            color: #00e8a2;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        h3 {
+            color: #00e8a2;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+        
+        .emoji {
+            font-size: 1.3em;
+        }
+        
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        
+        .feature-card {
+            background: #252d47;
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid #00e8a2;
+        }
+        
+        .feature-card h4 {
+            color: #00e8a2;
+            margin-bottom: 8px;
+        }
+        
+        .step {
+            background: #252d47;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 6px;
+            border-left: 3px solid #00e8a2;
+        }
+        
+        .step-number {
+            display: inline-block;
+            background: #00e8a2;
+            color: #0a0e27;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 30px;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        
+        code {
+            background: #0a0e27;
+            color: #00e8a2;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .button {
+            display: inline-block;
+            background: #00e8a2;
+            color: #0a0e27;
+            padding: 12px 24px;
+            border-radius: 5px;
+            text-decoration: none;
+            font-weight: bold;
+            margin-top: 15px;
+            cursor: pointer;
+            border: none;
+            font-size: 1em;
+            transition: all 0.3s ease;
+        }
+        
+        .button:hover {
+            background: #00a870;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 232, 162, 0.3);
+        }
+        
+        .warning {
+            background: #2d2a0f;
+            border-left: 3px solid #ff9800;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+            color: #ffb74d;
+        }
+        
+        .success {
+            background: #1a2d1a;
+            border-left: 3px solid #00e8a2;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+            color: #00e8a2;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            margin: 5px 0;
+        }
+        
+        .status-active {
+            background: #00e8a2;
+            color: #0a0e27;
+        }
+        
+        .status-inactive {
+            background: #ff6b6b;
+            color: white;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #252d47;
+        }
+        
+        th {
+            background: #252d47;
+            color: #00e8a2;
+            font-weight: bold;
+        }
+        
+        tr:hover {
+            background: #252d47;
+        }
+        
+        .icon {
+            font-size: 1.2em;
+            margin-right: 5px;
+        }
+        
+        footer {
+            text-align: center;
+            margin-top: 40px;
+            padding: 20px;
+            border-top: 1px solid #252d47;
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/admin" class="back-button">← Volver al Panel</a>
+        
+        <header>
+            <h1>📊 Panel de Administración</h1>
+            <p class="subtitle">Sistema de Monitoreo de Emisoras Radiofónicas</p>
+        </header>
+        
+        <!-- Quick Access -->
+        <section class="section">
+            <h2><span class="emoji">⚡</span>Acceso Rápido</h2>
+            <p style="margin-bottom: 15px;">Haz clic en el botón para entrar al panel:</p>
+            <a href="/admin" class="button">🚀 Abrir Panel de Administración</a>
+        </section>
+        
+        <!-- Features -->
+        <section class="section">
+            <h2><span class="emoji">✨</span>Funcionalidades Principales</h2>
+            
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <h4>📊 Dashboard</h4>
+                    <p>Vista en tiempo real de:</p>
+                    <ul style="margin-left: 20px;">
+                        <li>Total de emisoras</li>
+                        <li>Emisoras activas (24h)</li>
+                        <li>Emisoras inactivas</li>
+                        <li>Total de canciones detectadas</li>
+                    </ul>
+                </div>
+                
+                <div class="feature-card">
+                    <h4>➕ Crear Emisora</h4>
+                    <p>Añade una nueva emisora al sistema con:</p>
+                    <ul style="margin-left: 20px;">
+                        <li>Nombre</li>
+                        <li>País</li>
+                        <li>URL del stream</li>
+                        <li>Sitio web</li>
+                    </ul>
+                </div>
+                
+                <div class="feature-card">
+                    <h4>✏️ Editar Emisoras</h4>
+                    <p>Modifica información de emisoras existentes en cualquier momento</p>
+                </div>
+                
+                <div class="feature-card">
+                    <h4>🗑️ Eliminar Emisoras</h4>
+                    <p>Elimina emisoras del sistema con confirmación de seguridad</p>
+                </div>
+                
+                <div class="feature-card">
+                    <h4>🔄 Actualización Automática</h4>
+                    <p>Los datos se actualizan automáticamente cada 30 segundos</p>
+                </div>
+                
+                <div class="feature-card">
+                    <h4>📱 Responsive Design</h4>
+                    <p>Funciona perfectamente en desktop, tablet y móvil</p>
+                </div>
+            </div>
+        </section>
+        
+        <!-- How to Use -->
+        <section class="section">
+            <h2><span class="emoji">📖</span>Guía de Uso</h2>
+            
+            <h3>1. Ver Dashboard y Emisoras</h3>
+            <div class="step">
+                <p><span class="step-number">1</span>Accede a <code>/admin</code></p>
+                <p>Verás un dashboard con estadísticas en tiempo real</p>
+                <p>La tabla muestra todas las emisoras con su estado actual</p>
+            </div>
+            
+            <h3>2. Crear Nueva Emisora</h3>
+            <div class="step">
+                <p><span class="step-number">1</span>Haz clic en el botón <strong>"➕ Añadir Nueva Emisora"</strong></p>
+            </div>
+            <div class="step">
+                <p><span class="step-number">2</span>Completa el formulario:</p>
+                <ul style="margin-left: 50px;">
+                    <li><strong>Nombre:</strong> Nombre de la emisora (ej: "Sabrosa 91.1 FM")</li>
+                    <li><strong>País:</strong> País de origen (ej: "República Dominicana")</li>
+                    <li><strong>URL del Stream:</strong> URL completa del stream de audio (ej: "https://stream.example.com/radio")</li>
+                    <li><strong>Sitio Web:</strong> Página web de la emisora (opcional)</li>
+                </ul>
+            </div>
+            <div class="step">
+                <p><span class="step-number">3</span>Haz clic en <strong>"✅ Crear"</strong></p>
+                <p>Verás una confirmación de éxito</p>
+            </div>
+            
+            <h3>3. Editar Emisora Existente</h3>
+            <div class="step">
+                <p><span class="step-number">1</span>Busca la emisora en la tabla</p>
+            </div>
+            <div class="step">
+                <p><span class="step-number">2</span>Haz clic en el botón <strong>"✏️ Editar"</strong> en la columna "Acciones"</p>
+            </div>
+            <div class="step">
+                <p><span class="step-number">3</span>Modifica los campos que necesites</p>
+            </div>
+            <div class="step">
+                <p><span class="step-number">4</span>Haz clic en <strong>"✅ Actualizar"</strong></p>
+            </div>
+            
+            <h3>4. Eliminar Emisora</h3>
+            <div class="step">
+                <p><span class="step-number">1</span>Localiza la emisora en la tabla</p>
+            </div>
+            <div class="step">
+                <p><span class="step-number">2</span>Haz clic en el botón <strong>"🗑️ Eliminar"</strong></p>
+            </div>
+            <div class="step">
+                <p><span class="step-number">3</span>Confirma en el diálogo de verificación</p>
+                <p style="color: #ffb74d;">⚠️ Esta acción no se puede deshacer</p>
+            </div>
+        </section>
+        
+        <!-- Interpretando Estados -->
+        <section class="section">
+            <h2><span class="emoji">🎯</span>Interpretando Estados</h2>
+            
+            <table>
+                <thead>
+                    <tr>
+                        <th>Estado</th>
+                        <th>Significado</th>
+                        <th>Acción Recomendada</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><span class="status-badge status-active">Activa (24h)</span></td>
+                        <td>Emisora detectada en las últimas 24 horas</td>
+                        <td>✅ Normal, todo funciona bien</td>
+                    </tr>
+                    <tr>
+                        <td><span class="status-badge status-inactive">Inactiva</span></td>
+                        <td>No detectada en las últimas 24 horas</td>
+                        <td>⚠️ Verificar URL del stream, puede estar offline</td>
+                    </tr>
+                </tbody>
+            </table>
+            
+            <h3>Columnas de la Tabla:</h3>
+            <ul style="margin-left: 20px; margin-top: 15px;">
+                <li><strong>ID:</strong> Identificador único de la emisora</li>
+                <li><strong>Nombre:</strong> Nombre de la emisora</li>
+                <li><strong>País:</strong> País de origen</li>
+                <li><strong>URL Stream:</strong> Enlace del stream (clickeable)</li>
+                <li><strong>Estado:</strong> Activa o Inactiva en las últimas 24h</li>
+                <li><strong>Plays (24h):</strong> Número de canciones detectadas en 24h</li>
+                <li><strong>Última Actividad:</strong> Cuándo se detectó la última canción</li>
+                <li><strong>Acciones:</strong> Botones para editar o eliminar</li>
+            </ul>
+        </section>
+        
+        <!-- Important Notes -->
+        <section class="section">
+            <h2><span class="emoji">⚠️</span>Notas Importantes</h2>
+            
+            <div class="success">
+                <strong>✅ URLs Válidas:</strong> Asegúrate de que la URL del stream sea válida y accesible. Debe ser un enlace directo al audio, no una página web.
+            </div>
+            
+            <div class="warning">
+                <strong>⚠️ Eliminación Permanente:</strong> Al eliminar una emisora, se perderá todo su historial. Usa esta función solo cuando sea absolutamente necesario.
+            </div>
+            
+            <div class="success">
+                <strong>✅ Actualización Automática:</strong> El panel se actualiza cada 30 segundos. No necesitas refrescar manualmente.
+            </div>
+            
+            <div class="warning">
+                <strong>⚠️ Validación:</strong> Los campos de nombre, país y URL son obligatorios. El sitio web es opcional.
+            </div>
+        </section>
+        
+        <!-- Stats Explanation -->
+        <section class="section">
+            <h2><span class="emoji">📈</span>Entendiendo las Estadísticas</h2>
+            
+            <h3>Total de Emisoras</h3>
+            <p>Número total de emisoras registradas en el sistema.</p>
+            
+            <h3>Emisoras Activas (24h)</h3>
+            <p>Cuántas emisoras han detectado al menos una canción en las últimas 24 horas. Esto indica que el sistema está monitoreando correctamente.</p>
+            
+            <h3>Emisoras Inactivas</h3>
+            <p>Emisoras sin detecciones en las últimas 24 horas. Pueden necesitar:</p>
+            <ul style="margin-left: 20px;">
+                <li>Verificación de URL (¿sigue online?)</li>
+                <li>Actualización del stream URL</li>
+                <li>Revisión de la configuración</li>
+            </ul>
+            
+            <h3>Total de Plays (Canciones Detectadas)</h3>
+            <p>Número acumulado de canciones detectadas por el sistema en todas las emisoras.</p>
+        </section>
+        
+        <!-- Troubleshooting -->
+        <section class="section">
+            <h2><span class="emoji">🔧</span>Solución de Problemas</h2>
+            
+            <h3>❓ La emisora no aparece en la lista</h3>
+            <p>Espera 30 segundos para que se actualice automáticamente, o haz clic en "🔄 Refrescar" si existe ese botón.</p>
+            
+            <h3>❓ Error al crear una emisora</h3>
+            <p>Verifica que:</p>
+            <ul style="margin-left: 20px;">
+                <li>Todos los campos obligatorios estén completos</li>
+                <li>La URL sea válida (debe empezar con http:// o https://)</li>
+                <li>No hay caracteres especiales problemáticos en el nombre</li>
+            </ul>
+            
+            <h3>❓ Emisora marcada como "Inactiva"</h3>
+            <p>Esto significa que el sistema no ha detectado canciones en 24h. Causas posibles:</p>
+            <ul style="margin-left: 20px;">
+                <li>La emisora está offline</li>
+                <li>La URL del stream es incorrecta</li>
+                <li>El servidor streaming tiene problemas</li>
+                <li>La conexión de red es lenta</li>
+            </ul>
+            <p><strong>Solución:</strong> Edita la emisora y verifica/actualiza la URL.</p>
+            
+            <h3>❓ No puedo acceder al panel</h3>
+            <p>Verifica que:</p>
+            <ul style="margin-left: 20px;">
+                <li>La aplicación esté corriendo (checa los logs)</li>
+                <li>Estés usando la URL correcta: <code>http://localhost:5000/admin</code></li>
+                <li>La conexión a la base de datos sea correcta</li>
+            </ul>
+        </section>
+        
+        <!-- Contact -->
+        <section class="section">
+            <h2><span class="emoji">📞</span>Soporte Técnico</h2>
+            
+            <p style="margin-bottom: 15px;">Si experimentas problemas o tienes preguntas:</p>
+            
+            <div class="success">
+                <strong>1. Revisa los logs del sistema</strong> para ver si hay mensajes de error detallados.
+            </div>
+            
+            <div class="success">
+                <strong>2. Reinicia la aplicación</strong> - A veces soluciona problemas temporales.
+            </div>
+            
+            <div class="success">
+                <strong>3. Contacta al equipo técnico</strong> con detalles del error y logs relevantes.
+            </div>
+        </section>
+        
+        <footer>
+            <p>Sistema de Monitoreo de Emisoras Radiofónicas © 2025</p>
+            <p style="margin-top: 10px;">Panel de Administración v2.0 - Completamente operativo</p>
+        </footer>
+    </div>
+</body>
+</html>

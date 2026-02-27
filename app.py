@@ -627,6 +627,22 @@ def index():
 
 
 # ============================================================================
+# RUTA ADMIN - Panel de Administración
+# ============================================================================
+
+@app.route("/admin")
+def admin():
+    """Panel de administración para gestionar emisoras."""
+    return render_template("admin.html")
+
+
+@app.route("/manual")
+def manual():
+    """Manual de usuario para el panel de administración."""
+    return render_template("manual_admin.html")
+
+
+# ============================================================================
 # API - Estadísticas Globales MEJORADAS
 # ============================================================================
 
