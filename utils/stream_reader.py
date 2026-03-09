@@ -926,6 +926,7 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
             "mb_genre": 0,
             "duplicates": 0,
             "errors": 0
+                    "not_detected": 0
         }
         
         for idx, e in enumerate(emisoras, 1):

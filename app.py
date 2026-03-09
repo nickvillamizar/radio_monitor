@@ -255,7 +255,6 @@ def monitor_loop():
             try:
                 stream_reader.actualizar_emisoras(
                     fallback_to_audd=bool(app.config.get("AUDD_API_TOKEN", "")),
-                    audd_token=app.config.get("AUDD_API_TOKEN", ""),
                     dedupe_seconds=int(app.config.get("DEDUPE_SECONDS", 300))
                 )
             except Exception as exc:
@@ -283,7 +282,26 @@ def start_monitor_thread():
     )
     t.start()
     app.logger.info("🚀 Monitor iniciado exitosamente")
+def start_monitor_thread():
+    """Watchdog inmortal: si el hilo muere, se reinicia solo."""
+    for t in threading.enumerate():
+        if t.name == "radio_monitor_thread" and t.is_alive():
+            app.logger.info("🔁 Monitor ya en ejecución, no se duplica")
+            return
 
+    def watchdog():
+        while True:
+            try:
+                monitor_loop()
+            except Exception as e:
+                app.logger.critical(
+                    f"🔴 Monitor caído: {e}. Reiniciando en 15s..."
+                )
+                time.sleep(15)
+
+    t = threading.Thread(target=watchdog, name="radio_monitor_thread", daemon=True)
+    t.start()
+    app.logger.info("🚀 Watchdog inmortal iniciado")
 
 # ============================================================================
 # UTILIDADES - Funciones helper
