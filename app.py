@@ -289,6 +289,23 @@ def start_monitor_thread():
     t.start()
     app.logger.info("🚀 Watchdog inmortal iniciado")
 
+    # ============================================================================
+# AUTO-START HOOK - Se ejecuta en la primera request
+# ============================================================================
+@app.before_request
+def ensure_monitor_running():
+    """Garantiza que el monitor se inicie con la primera request HTTP."""
+    # Verificar si el monitor ya está corriendo
+    for t in threading.enumerate():
+        if t.name == "radio_monitor_thread" and t.is_alive():
+            return  # Monitor ya está corriendo
+    
+    # Si no está corriendo, iniciarlo
+    try:
+        start_monitor_thread()
+    except Exception as e:
+        app.logger.error(f"Error iniciando monitor en before_request: {e}")
+
 # ============================================================================
 # UTILIDADES - Funciones helper
 # ============================================================================
