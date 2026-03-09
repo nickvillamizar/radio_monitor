@@ -269,20 +269,6 @@ def monitor_loop():
 
 
 def start_monitor_thread():
-    """Inicia el hilo del monitor si no está corriendo."""
-    for t in threading.enumerate():
-        if t.name == "radio_monitor_thread":
-            app.logger.info("🔁 Monitor ya en ejecución")
-            return
-    
-    t = threading.Thread(
-        target=monitor_loop,
-        name="radio_monitor_thread",
-        daemon=True
-    )
-    t.start()
-    app.logger.info("🚀 Monitor iniciado exitosamente")
-def start_monitor_thread():
     """Watchdog inmortal: si el hilo muere, se reinicia solo."""
     for t in threading.enumerate():
         if t.name == "radio_monitor_thread" and t.is_alive():
