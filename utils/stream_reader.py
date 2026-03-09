@@ -925,7 +925,7 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
             "audd_success": 0,
             "mb_genre": 0,
             "duplicates": 0,
-            "errors": 0
+            "errors": 0,
                     "not_detected": 0
         }
         
