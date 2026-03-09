@@ -1660,9 +1660,8 @@ if __name__ == "__main__":
         use_reloader=False
     )
 
-# Iniciar monitor también con Gunicorn
-try:
-    with app.app_context():
-        start_monitor_thread()
-except Exception as e:
-    app.logger.error(f"Error iniciando monitor: {e}")
+
+# ============================================================================
+# AUTO-START MONITOR - Para Gunicorn/producción
+# ============================================================================
+start_monitor_thread()
