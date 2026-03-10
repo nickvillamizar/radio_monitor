@@ -924,7 +924,7 @@ if not audd_token or audd_token.strip() == "":
         emisoras = Emisora.query.all()
         
         if not emisoras:
-                er.warning("[WARN]  Sin emisoras en BD")
+                logger.warning("[WARN]  Sin emisoras en BD")
             return
         
         logger.info(f"[RADIO] {len(emisoras)} emisoras a procesar\n")
@@ -949,7 +949,7 @@ if not audd_token or audd_token.strip() == "":
                 url = getattr(e, "url_stream", None) or getattr(e, "url", None)
                 
                 if not url:
-                    logglogger.error(f"[ERROR] Sin URL - OMITIENDO")
+                    logger.error(f"[ERROR] Sin URL - OMITIENDO")
                     stats["errors"] += 1
                     continue
                 
@@ -1104,7 +1104,7 @@ if not audd_token or audd_token.strip() == "":
                     name = e.nombre
                 except Exception:
                     name = 'emisora'
-                logglogger.error(f"[ERROR] ERROR PROCESANDO {name}: {exc}")
+                logger.error(f"[ERROR] ERROR PROCESANDO {name}: {exc}")
                 import traceback
                 traceback.print_exc()
                 stats["errors"] += 1
@@ -1119,7 +1119,7 @@ if not audd_token or audd_token.strip() == "":
 
 
     except Exception as exc:
-        logglogger.error(f"[ERROR] ERROR CRÍTICO EN SISTEMA: {exc}")
+        logger.error(f"[ERROR] ERROR CRÍTICO EN SISTEMA: {exc}")
         import traceback
         traceback.print_exc()
         # ESTADÍSTICAS FINALES
@@ -1140,6 +1140,6 @@ if not audd_token or audd_token.strip() == "":
         logger.info(f"{'=' * 70}\n")
         
     except Exception as exc:
-        logglogger.error(f"[ERROR] ERROR CRÍTICO EN SISTEMA: {exc}")
+        logger.error(f"[ERROR] ERROR CRÍTICO EN SISTEMA: {exc}")
         import traceback
         traceback.print_exc()
