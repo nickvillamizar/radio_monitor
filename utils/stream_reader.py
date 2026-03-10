@@ -903,24 +903,16 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
     [OK] VERSIÓN PERIODÍSTICA PROFESIONAL
     NO SE RINDE. GARANTÍA 100% DE REGISTRO.
     """
-    try:
-        from flask import current_app
-        from utils.db import db
-        from models.emisoras import Emisora, Cancion
-        
-        app = current_app._get_current_object()
-        
-        logger.info("=" * 70)
-        logger.info("[OK] SISTEMA PERIODÍSTICO PROFESIONAL - INICIANDO")
-        logger.info("=" * 70)
-                except Exception as exc:
-        logger.error(f"[ERROR] Error inicializando: {exc}")
-        pass
-        audd_token = app.config.get("AUDD_API_TOKEN", "")
-if not audd_token or audd_token.strip() == "":
-        audd_token = "af9487123bb9013135e6428b1cd45666"  # Inyección directa por emergencia
-            
-        emisoras = Emisora.query.all()
+
+    from flask import current_app
+    from utils.db import db
+    from models.emisoras import Emisora, Cancion
+    
+    app = current_app._get_current_object()
+    
+    logger.info("=" * 70)
+    logger.info("[OK] SISTEMA PERIODÍSTICO PROFESIONAL - INICIANDO")
+    logger.info("=" * 70)
         
         if not emisoras:
                 logger.warning("[WARN]  Sin emisoras en BD")
