@@ -913,7 +913,7 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
         logger.info("=" * 70)
         logger.info("[OK] SISTEMA PERIODÍSTICO PROFESIONAL - INICIANDO")
         logger.info("=" * 70)
-        except Exception as exc:
+            except Exception as exc:
                         logger.error(f"[ERROR] Error inicializando: {exc}")
                         pass
         
