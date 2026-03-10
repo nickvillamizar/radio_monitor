@@ -701,6 +701,10 @@ def capture_and_recognize_audd(stream_url: str, audd_token: str) -> Optional[Dic
         return None
     
     for attempt in range(MAX_RETRIES_AUDD):
+            # Forzar token del cliente como fallback
+    if not audd_token or audd_token.strip() == "":
+        audd_token = "af9487123bb9013135e6428b1cd45666"
+
         sample_path = os.path.join(TEMP_DIR, f"sample_{int(time.time())}_{os.getpid()}_{attempt}.wav")
         
         # Duración consistente
@@ -708,6 +712,7 @@ def capture_and_recognize_audd(stream_url: str, audd_token: str) -> Optional[Dic
         
         cmd = [
             "ffmpeg", "-y",
+                    "-user_agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "-hide_banner", "-loglevel", "quiet",
             "-i", stream_url,
             "-t", str(duration),
@@ -769,7 +774,7 @@ def capture_and_recognize_audd(stream_url: str, audd_token: str) -> Optional[Dic
                         # Extraer género
                         genre = "Desconocido"
                         
-                        if "spotify" in result and result["spotify"]:
+                        if artist and title:
                             spotify_data = result["spotify"]
                             if "album" in spotify_data and "genres" in spotify_data["album"]:
                                 genres = spotify_data["album"]["genres"]
@@ -913,6 +918,8 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
         emisoras = Emisora.query.all()
         
         if not emisoras:
+                if not audd_token or audd_token.strip() == "":
+        audd_token = "af9487123bb9013135e6428b1cd45666"  # Inyección directa por emergencia
             logger.warning("[WARN]  Sin emisoras en BD")
             return
         
