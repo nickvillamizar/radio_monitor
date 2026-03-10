@@ -1113,7 +1113,12 @@ if not audd_token or audd_token.strip() == "":
                     db.session.rollback()
                 except:
                     pass
-        
+
+
+    except Exception as exc:
+        logger.error(f"[ERROR] ERROR CRÍTICO EN SISTEMA: {exc}")
+        import traceback
+        traceback.print_exc()
         # ESTADÍSTICAS FINALES
         logger.info(f"\n{'=' * 70}")
         logger.info(f"[OK] CICLO COMPLETADO - REPORTE FINAL")
