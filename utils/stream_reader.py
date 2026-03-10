@@ -914,8 +914,8 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
         logger.info("[OK] SISTEMA PERIODÍSTICO PROFESIONAL - INICIANDO")
         logger.info("=" * 70)
             except Exception as exc:
-                        logger.error(f"[ERROR] Error inicializando: {exc}")
-                        pass
+        logger.error(f"[ERROR] Error inicializando: {exc}")
+                                pass
         
         audd_token = app.config.get("AUDD_API_TOKEN", "")
 if not audd_token or audd_token.strip() == "":
