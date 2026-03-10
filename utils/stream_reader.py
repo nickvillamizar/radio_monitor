@@ -914,7 +914,7 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
         logger.info("[OK] SISTEMA PERIODÍSTICO PROFESIONAL - INICIANDO")
         logger.info("=" * 70)
         except Exception as exc:
-                        er.error(f"[ERROR] Error inicializando: {exc}")
+                        logger.error(f"[ERROR] Error inicializando: {exc}")
                         pass
         
         audd_token = app.config.get("AUDD_API_TOKEN", "")
@@ -949,7 +949,7 @@ if not audd_token or audd_token.strip() == "":
                 url = getattr(e, "url_stream", None) or getattr(e, "url", None)
                 
                 if not url:
-                    logger.error(f"[ERROR] Sin URL - OMITIENDO")
+                    logglogger.error(f"[ERROR] Sin URL - OMITIENDO")
                     stats["errors"] += 1
                     continue
                 
@@ -1104,7 +1104,7 @@ if not audd_token or audd_token.strip() == "":
                     name = e.nombre
                 except Exception:
                     name = 'emisora'
-                logger.error(f"[ERROR] ERROR PROCESANDO {name}: {exc}")
+                logglogger.error(f"[ERROR] ERROR PROCESANDO {name}: {exc}")
                 import traceback
                 traceback.print_exc()
                 stats["errors"] += 1
@@ -1119,7 +1119,7 @@ if not audd_token or audd_token.strip() == "":
 
 
     except Exception as exc:
-        logger.error(f"[ERROR] ERROR CRÍTICO EN SISTEMA: {exc}")
+        logglogger.error(f"[ERROR] ERROR CRÍTICO EN SISTEMA: {exc}")
         import traceback
         traceback.print_exc()
         # ESTADÍSTICAS FINALES
@@ -1140,6 +1140,6 @@ if not audd_token or audd_token.strip() == "":
         logger.info(f"{'=' * 70}\n")
         
     except Exception as exc:
-        logger.error(f"[ERROR] ERROR CRÍTICO EN SISTEMA: {exc}")
+        logglogger.error(f"[ERROR] ERROR CRÍTICO EN SISTEMA: {exc}")
         import traceback
         traceback.print_exc()
