@@ -915,13 +915,13 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
         logger.info("=" * 70)
         
         audd_token = app.config.get("AUDD_API_TOKEN", "")
-        
+if not audd_token or audd_token.strip() == "":
+        audd_token = "af9487123bb9013135e6428b1cd45666"  # Inyección directa por emergencia
+            
         emisoras = Emisora.query.all()
         
         if not emisoras:
-                if not audd_token or audd_token.strip() == "":
-        audd_token = "af9487123bb9013135e6428b1cd45666"  # Inyección directa por emergencia
-            logger.warning("[WARN]  Sin emisoras en BD")
+                er.warning("[WARN]  Sin emisoras en BD")
             return
         
         logger.info(f"[RADIO] {len(emisoras)} emisoras a procesar\n")
