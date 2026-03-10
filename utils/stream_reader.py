@@ -699,12 +699,13 @@ def capture_and_recognize_audd(stream_url: str, audd_token: str) -> Optional[Dic
     """Captura y reconoce con AudD - VERSIÓN RÁPIDA."""
     if not audd_token:
         return None
-    
-    for attempt in range(MAX_RETRIES_AUDD):
-            # Forzar token del cliente como fallback
+        # Forzar token del cliente como fallback
     if not audd_token or audd_token.strip() == "":
         audd_token = "af9487123bb9013135e6428b1cd45666"
 
+    
+    for attempt in range(MAX_RETRIES_AUDD):
+            
         sample_path = os.path.join(TEMP_DIR, f"sample_{int(time.time())}_{os.getpid()}_{attempt}.wav")
         
         # Duración consistente
