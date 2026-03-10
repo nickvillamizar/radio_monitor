@@ -914,31 +914,31 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
     logger.info("[OK] SISTEMA PERIODÍSTICO PROFESIONAL - INICIANDO")
     logger.info("=" * 70)
         
-        if not emisoras:
+        if not emisoras or len(emisoras) == 0:
                 logger.warning("[WARN]  Sin emisoras en BD")
             return
         
-        logger.info(f"[RADIO] {len(emisoras)} emisoras a procesar\n")
-        
-        stats = {
-            "processed": 0,
-            "registered": 0,
-            "icy_success": 0,
-            "audd_success": 0,
-            "mb_genre": 0,
-            "duplicates": 0,
-            "errors": 0,
-                    "not_detected": 0
-        }
-        
-        for idx, e in enumerate(emisoras, 1):
-            try:
-                logger.info(f"{'=' * 70}")
-                logger.info(f"[SIGNAL] [{idx}/{len(emisoras)}] {e.nombre} (ID: {e.id})")
-                logger.info(f"{'-' * 70}")
-                
-                url = getattr(e, "url_stream", None) or getattr(e, "url", None)
-                
+    logger.info(f"[RADIO] {len(emisoras)} emisoras a procesar\n")
+    
+    stats = {
+        "processed": 0,
+        "registered": 0,
+        "icy_success": 0,
+        "audd_success": 0,
+        "mb_genre": 0,
+        "duplicates": 0,
+        "errors": 0,
+                "not_detected": 0
+    }
+    
+    for idx, e in enumerate(emisoras, 1):
+        try:
+            logger.info(f"{'=' * 70}")
+            logger.info(f"[SIGNAL] [{idx}/{len(emisoras)}] {e.nombre} (ID: {e.id})")
+            logger.info(f"{'-' * 70}")
+            
+            url = getattr(e, "url_stream", None) or getattr(e, "url", None)
+            
                 if not url:
                     logger.error(f"[ERROR] Sin URL - OMITIENDO")
                     stats["errors"] += 1
