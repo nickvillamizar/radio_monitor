@@ -919,17 +919,22 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
         logger.warning("[WARN] Sin emisoras en BD")
         return
 
-    logger.info(f"[OK] Procesando {len(emisoras)} emisoras...")
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    import threading
+
+    logger.info(f"[OK] Procesando {len(emisoras)} emisoras en paralelo...")
 
     resultados = {"ok": 0, "icy": 0, "audd": 0, "fallo": 0, "skip": 0}
+    db_lock = threading.Lock()
 
-    for emisora in emisoras:
+    def procesar_emisora(emisora):
+        """Procesa una emisora individual - se ejecuta en thread paralelo."""
         try:
             url = emisora.url_stream
             if not url:
                 logger.warning(f"  [SKIP] {emisora.nombre}: sin URL")
-                resultados["skip"] += 1
-                continue
+                return "skip"
 
             logger.info(f"  [>>] {emisora.nombre} | {url[:60]}")
 
@@ -944,50 +949,15 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
                 fuente = "icy"
                 logger.info(f"  [OK] ICY: {artista} - {titulo}")
 
-                # Verificar duplicado
-                if is_recent_duplicate(db, Cancion, emisora.id, artista, titulo, dedupe_seconds):
-                    logger.info(f"  [SKIP] Duplicado reciente: {artista} - {titulo}")
-                    resultados["skip"] += 1
-                    continue
-
-                # Guardar en BD
-                cancion = Cancion(
-                    titulo=titulo,
-                    artista=artista,
-                    genero="Desconocido",
-                    emisora_id=emisora.id,
-                    fecha_reproduccion=datetime.now(),
-                    fuente=fuente,
-                )
-                db.session.add(cancion)
-                emisora.ultima_cancion = f"{artista} - {titulo}"
-                emisora.ultima_actualizacion = datetime.now()
-                db.session.commit()
-                resultados["ok"] += 1
-                resultados["icy"] += 1
-                logger.info(f"  [SAVED] ICY guardado: {artista} - {titulo}")
-                continue
-
-            # 2. Fallback a AudD
-            if fallback_to_audd:
-                audd_token = app.config.get("AUDD_API_TOKEN", "")
-                audd_result = capture_and_recognize_audd(real_url, audd_token)
-
-                if audd_result:
-                    artista = audd_result.get("artist", "Artista Desconocido")
-                    titulo = audd_result.get("title", "Cancion Desconocida")
-                    genero = audd_result.get("genre", "Desconocido")
-                    fuente = "audd"
-
+                with db_lock:
                     if is_recent_duplicate(db, Cancion, emisora.id, artista, titulo, dedupe_seconds):
-                        logger.info(f"  [SKIP] Duplicado AudD: {artista} - {titulo}")
-                        resultados["skip"] += 1
-                        continue
+                        logger.info(f"  [SKIP] Duplicado ICY: {artista} - {titulo}")
+                        return "skip"
 
                     cancion = Cancion(
                         titulo=titulo,
                         artista=artista,
-                        genero=genero,
+                        genero="Desconocido",
                         emisora_id=emisora.id,
                         fecha_reproduccion=datetime.now(),
                         fuente=fuente,
@@ -995,24 +965,71 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
                     db.session.add(cancion)
                     emisora.ultima_cancion = f"{artista} - {titulo}"
                     emisora.ultima_actualizacion = datetime.now()
-                    db.session.commit()
-                    resultados["ok"] += 1
-                    resultados["audd"] += 1
-                    logger.info(f"  [SAVED] AudD guardado: {artista} - {titulo}")
-                    continue
+                    try:
+                        db.session.commit()
+                        logger.info(f"  [SAVED] ICY: {artista} - {titulo}")
+                        return "icy"
+                    except Exception as e:
+                        db.session.rollback()
+                        logger.error(f"  [DB ERROR] {e}")
+                        return "fallo"
+
+            # 2. Fallback a AudD
+            if fallback_to_audd:
+                audd_token = app.config.get("AUDD_API_TOKEN", "")
+                if audd_token:
+                    audd_result = capture_and_recognize_audd(real_url, audd_token)
+                    if audd_result:
+                        artista = audd_result.get("artist", "Artista Desconocido")
+                        titulo = audd_result.get("title", "Cancion Desconocida")
+                        genero = audd_result.get("genre", "Desconocido")
+
+                        with db_lock:
+                            if is_recent_duplicate(db, Cancion, emisora.id, artista, titulo, dedupe_seconds):
+                                return "skip"
+
+                            cancion = Cancion(
+                                titulo=titulo,
+                                artista=artista,
+                                genero=genero,
+                                emisora_id=emisora.id,
+                                fecha_reproduccion=datetime.now(),
+                                fuente="audd",
+                            )
+                            db.session.add(cancion)
+                            emisora.ultima_cancion = f"{artista} - {titulo}"
+                            emisora.ultima_actualizacion = datetime.now()
+                            try:
+                                db.session.commit()
+                                logger.info(f"  [SAVED] AudD: {artista} - {titulo}")
+                                return "audd"
+                            except Exception as e:
+                                db.session.rollback()
+                                return "fallo"
 
             # 3. Sin deteccion
-            logger.warning(f"  [FAIL] Sin deteccion para {emisora.nombre}")
-            resultados["fallo"] += 1
-            _save_emisora_diagnosis(db, emisora, "sin_deteccion")
+            logger.warning(f"  [FAIL] Sin deteccion: {emisora.nombre}")
+            return "fallo"
 
         except Exception as e:
             logger.error(f"  [ERROR] {emisora.nombre}: {e}")
-            resultados["fallo"] += 1
             try:
-                db.session.rollback()
+                with db_lock:
+                    db.session.rollback()
             except Exception:
                 pass
+            return "fallo"
+
+    # Procesar hasta 8 emisoras en paralelo (no sobrecargar el servidor)
+    MAX_WORKERS = 8
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = {executor.submit(procesar_emisora, em): em for em in emisoras}
+        for future in as_completed(futures):
+            result = future.result()
+            if result in resultados:
+                resultados[result] += 1
+            if result in ("icy", "audd"):
+                resultados["ok"] += 1
 
     logger.info("=" * 70)
     logger.info(f"[OK] CICLO COMPLETADO: ok={resultados['ok']} icy={resultados['icy']} audd={resultados['audd']} fallo={resultados['fallo']} skip={resultados['skip']}")
