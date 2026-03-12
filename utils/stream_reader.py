@@ -910,9 +910,9 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
     
     app = current_app._get_current_object()
 
-logger.info("=" * 70)
-logger.info("[OK] SISTEMA PERIODISTICO PROFESIONAL - INICIANDO")
-logger.info("=" * 70)
+    logger.info("=" * 70)
+    logger.info("[OK] SISTEMA PERIODISTICO PROFESIONAL - INICIANDO")
+    logger.info("=" * 70)
 
     emisoras = Emisora.query.all()
     if not emisoras or len(emisoras) == 0:
