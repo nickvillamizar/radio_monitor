@@ -908,7 +908,7 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
     from utils.db import db
     from models.emisoras import Emisora, Cancion
     
-        app = current_app._get_current_object()
+    app = current_app._get_current_object()
 
     logger.info("=" * 70)
     logger.info("[OK] SISTEMA PERIODISTICO PROFESIONAL - INICIANDO")
