@@ -914,7 +914,9 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
     logger.info("[OK] SISTEMA PERIODÍSTICO PROFESIONAL - INICIANDO")
     logger.info("=" * 70)
         
-    917
-    (emisoras) == 0:
+    918
+    if not emisoras or len(emisoras) == 0:
+            logger.warning("[WARN] Sin emisoras en BD")
+                return
                 logger.warning("[WARN]  Sin emisoras en BD")
         return
