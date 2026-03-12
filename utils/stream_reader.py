@@ -918,3 +918,102 @@ def actualizar_emisoras(fallback_to_audd=True, dedupe_seconds=DEDUPE_SECONDS):
     if not emisoras or len(emisoras) == 0:
         logger.warning("[WARN] Sin emisoras en BD")
         return
+
+    logger.info(f"[OK] Procesando {len(emisoras)} emisoras...")
+
+    resultados = {"ok": 0, "icy": 0, "audd": 0, "fallo": 0, "skip": 0}
+
+    for emisora in emisoras:
+        try:
+            url = emisora.url_stream
+            if not url:
+                logger.warning(f"  [SKIP] {emisora.nombre}: sin URL")
+                resultados["skip"] += 1
+                continue
+
+            logger.info(f"  [>>] {emisora.nombre} | {url[:60]}")
+
+            # Obtener URL real del stream
+            real_url = get_real_stream_url(url)
+
+            # 1. Intentar ICY metadata
+            icy_title = get_icy_metadata(real_url, timeout=ICY_TIMEOUT)
+
+            if icy_title and is_valid_metadata(icy_title):
+                artista, titulo = parse_title_artist(icy_title)
+                fuente = "icy"
+                logger.info(f"  [OK] ICY: {artista} - {titulo}")
+
+                # Verificar duplicado
+                if is_recent_duplicate(db, Cancion, emisora.id, artista, titulo, dedupe_seconds):
+                    logger.info(f"  [SKIP] Duplicado reciente: {artista} - {titulo}")
+                    resultados["skip"] += 1
+                    continue
+
+                # Guardar en BD
+                cancion = Cancion(
+                    titulo=titulo,
+                    artista=artista,
+                    genero="Desconocido",
+                    emisora_id=emisora.id,
+                    fecha_reproduccion=datetime.now(),
+                    fuente=fuente,
+                )
+                db.session.add(cancion)
+                emisora.ultima_cancion = f"{artista} - {titulo}"
+                emisora.ultima_actualizacion = datetime.now()
+                db.session.commit()
+                resultados["ok"] += 1
+                resultados["icy"] += 1
+                logger.info(f"  [SAVED] ICY guardado: {artista} - {titulo}")
+                continue
+
+            # 2. Fallback a AudD
+            if fallback_to_audd:
+                audd_token = app.config.get("AUDD_API_TOKEN", "")
+                audd_result = capture_and_recognize_audd(real_url, audd_token)
+
+                if audd_result:
+                    artista = audd_result.get("artist", "Artista Desconocido")
+                    titulo = audd_result.get("title", "Cancion Desconocida")
+                    genero = audd_result.get("genre", "Desconocido")
+                    fuente = "audd"
+
+                    if is_recent_duplicate(db, Cancion, emisora.id, artista, titulo, dedupe_seconds):
+                        logger.info(f"  [SKIP] Duplicado AudD: {artista} - {titulo}")
+                        resultados["skip"] += 1
+                        continue
+
+                    cancion = Cancion(
+                        titulo=titulo,
+                        artista=artista,
+                        genero=genero,
+                        emisora_id=emisora.id,
+                        fecha_reproduccion=datetime.now(),
+                        fuente=fuente,
+                    )
+                    db.session.add(cancion)
+                    emisora.ultima_cancion = f"{artista} - {titulo}"
+                    emisora.ultima_actualizacion = datetime.now()
+                    db.session.commit()
+                    resultados["ok"] += 1
+                    resultados["audd"] += 1
+                    logger.info(f"  [SAVED] AudD guardado: {artista} - {titulo}")
+                    continue
+
+            # 3. Sin deteccion
+            logger.warning(f"  [FAIL] Sin deteccion para {emisora.nombre}")
+            resultados["fallo"] += 1
+            _save_emisora_diagnosis(db, emisora, "sin_deteccion")
+
+        except Exception as e:
+            logger.error(f"  [ERROR] {emisora.nombre}: {e}")
+            resultados["fallo"] += 1
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+
+    logger.info("=" * 70)
+    logger.info(f"[OK] CICLO COMPLETADO: ok={resultados['ok']} icy={resultados['icy']} audd={resultados['audd']} fallo={resultados['fallo']} skip={resultados['skip']}")
+    logger.info("=" * 70)
