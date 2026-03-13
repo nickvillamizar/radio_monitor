@@ -283,3 +283,20 @@ def limpiar_canciones_emisora(emisora_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
+
+
+@emisoras_api.route("/api/limpiar_db", methods=["GET"])
+def limpiar_db_masivo():
+    ids = [17,5,36,12,20,21,22,2,10,1,27,24]
+    keep = int(request.args.get("keep", 5))
+    resultados = []
+    try:
+        for eid in ids:
+            ids_keep = (db.session.query(Cancion.id).filter(Cancion.emisora_id==eid).order_by(Cancion.fecha_reproduccion.desc()).limit(keep).subquery())
+            deleted = Cancion.query.filter(Cancion.emisora_id==eid).filter(~Cancion.id.in_(ids_keep)).delete(synchronize_session=False)
+            db.session.commit()
+            resultados.append({"emisora_id": eid, "eliminados": deleted})
+        return jsonify({"ok": True, "resultados": resultados}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
