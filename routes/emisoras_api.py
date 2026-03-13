@@ -252,3 +252,34 @@ def get_stats():
         return jsonify(stats), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# DELETE — Limpiar canciones antiguas de una emisora (mantener solo las últimas N)
+@emisoras_api.route("/api/emisoras/<int:emisora_id>/limpiar_canciones", methods=["DELETE"])
+def limpiar_canciones_emisora(emisora_id):
+    """Elimina registros de canciones antiguos de una emisora, conservando solo los últimos N."""
+    try:
+        emisora = Emisora.query.get(emisora_id)
+        if not emisora:
+            return jsonify({"error": "Emisora no encontrada"}), 404
+        # Cuántos registros conservar (por defecto 10)
+        keep = int(request.args.get("keep", 10))
+        # IDs a conservar (los más recientes)
+        ids_keep = (
+            db.session.query(Cancion.id)
+            .filter(Cancion.emisora_id == emisora_id)
+            .order_by(Cancion.fecha_reproduccion.desc())
+            .limit(keep)
+            .subquery()
+        )
+        deleted = (
+            Cancion.query
+            .filter(Cancion.emisora_id == emisora_id)
+            .filter(~Cancion.id.in_(ids_keep))
+            .delete(synchronize_session=False)
+        )
+        db.session.commit()
+        return jsonify({"message": f"Limpieza completada", "eliminados": deleted, "conservados": keep}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
