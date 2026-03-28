@@ -20,12 +20,12 @@ import random
 # CONFIGURACIÓN AGRESIVA - NO NOS RENDIMOS
 # ============================================================================
 
-ICY_TIMEOUT = 8  # Reducido de 15 a 8 segundos (más rápido)
-SAMPLE_DURATION = 10  # Reducido de 12 a 10 segundos
+ICY_TIMEOUT = 20  # Reducido de 15 a 8 segundos (más rápido)
+SAMPLE_DURATION = 15  # Reducido de 12 a 10 segundos
 DEDUPE_SECONDS = 90
-MAX_RETRIES_ICY = 3  # Reducido de 5 a 3 intentos
-MAX_RETRIES_AUDD = 2  # Reducido de 3 a 2 intentos
-RETRY_DELAY = 1  # Reducido de 2 a 1 segundo
+MAX_RETRIES_ICY = 5  # Reducido de 5 a 3 intentos
+MAX_RETRIES_AUDD = 4  # Reducido de 3 a 2 intentos
+RETRY_DELAY = 2  # Reducido de 2 a 1 segundo
 
 TEMP_DIR = os.path.join(os.getcwd(), "tmp")
 os.makedirs(TEMP_DIR, exist_ok=True)
