@@ -1687,11 +1687,18 @@ if __name__ == "__main__":
 
 # ============================================================================
 
-# AUTO-START: Hook para iniciar el monitor en el primer request
-@app.before_first_request
-def start_monitor_on_first_request():
-    app.logger.info("🚀 Iniciando monitor automáticamente en el primer request...")
-    start_monitor_thread()
-# AUTO-START MONITOR - Para Gunicorn/producción
+  AUTO-START MONITOR - Para Gunicorn/producción
+# Iniciar monitor con delay para permitir que Gunicorn/Render termine de cargar
+def _start_monitor_with_delay():
+    import time
+    time.sleep(5)  # Esperar 5 segundos
+    with app.app_context():
+        app.logger.info("🚀 AUTO-INICIANDO monitor de emisoras...")
+        start_monitor_thread()
+
+# Iniciar en un thread separado para no bloquear el startup
+import threading
+monitor_startup_thread = threading.Thread(target=_start_monitor_with_delay, daemon=True)
+monitor_startup_thread.start()
 # ============================================================================
 # start_monitor_thread()  # Comentado: esto causaba error de contexto
