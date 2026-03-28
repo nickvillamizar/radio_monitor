@@ -1687,7 +1687,7 @@ if __name__ == "__main__":
 
 # ============================================================================
 
-  AUTO-START MONITOR - Para Gunicorn/producción
+# AUTO-START MONITOR - Para Gunicorn/producción
 # Iniciar monitor con delay para permitir que Gunicorn/Render termine de cargar
 def _start_monitor_with_delay():
     import time
@@ -1700,5 +1700,5 @@ def _start_monitor_with_delay():
 import threading
 monitor_startup_thread = threading.Thread(target=_start_monitor_with_delay, daemon=True)
 monitor_startup_thread.start()
-# ============================================================================
-# start_monitor_thread()  # Comentado: esto causaba error de contexto
+
+# ===================================================================================# start_monitor_thread()  # Comentado: esto causaba error de contexto
