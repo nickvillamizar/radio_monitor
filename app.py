@@ -1,4 +1,5 @@
-## app.py
+#ensure_monitor_running
+# app.py
 import time
 import threading
 from datetime import datetime, timedelta
@@ -305,6 +306,7 @@ def ensure_monitor_running():
                 break
     
     if monitor_alive:
+                return  # Monitor already running
     # Si no está corriendo, iniciarlo
     try:
         start_monitor_thread()
