@@ -1686,6 +1686,12 @@ if __name__ == "__main__":
 
 
 # ============================================================================
+
+# AUTO-START: Hook para iniciar el monitor en el primer request
+@app.before_first_request
+def start_monitor_on_first_request():
+    app.logger.info("🚀 Iniciando monitor automáticamente en el primer request...")
+    start_monitor_thread()
 # AUTO-START MONITOR - Para Gunicorn/producción
 # ============================================================================
-start_monitor_thread()
+# start_monitor_thread()  # Comentado: esto causaba error de contexto
