@@ -5,9 +5,8 @@ Configurar token AudD y forzar ciclo completo de detecci√≥n
 import os
 
 # Configurar token AudD
-AUDD_TOKEN = "270b4f1f1e3fbefe8e76febd4b29b42f"
+AUDD_TOKEN = "af9487123bb9013135e6428b1cd45666"  # Token Pro actualizado abril 2026os.environ['AUDD_API_TOKEN'] = AUDD_TOKEN
 os.environ['AUDD_API_TOKEN'] = AUDD_TOKEN
-
 # Configurar variables necesarias
 os.environ['DATABASE_URL'] = 'postgresql://neondb_owner:npg_KwHW54JXqORz@ep-rough-leaf-adci1see-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require'
 
