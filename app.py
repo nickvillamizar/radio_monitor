@@ -1690,12 +1690,35 @@ if __name__ == "__main__":
 # AUTO-START MONITOR - Para Gunicorn/producción
 # Iniciar monitor con delay para permitir que Gunicorn/Render termine de cargar
 def _start_monitor_with_delay():
+    """Inicia el monitor después de un delay, con reintentos en caso de error"""
     import time
-    time.sleep(5)  # Esperar 5 segundos
-    with app.app_context():
-        app.logger.info("🚀 AUTO-INICIANDO monitor de emisoras...")
-        start_monitor_thread()
-
+    import sys
+    
+    try:
+        print("🕐 [MONITOR] Esperando 10 segundos antes de iniciar...", file=sys.stderr)
+        time.sleep(10)  # Aumentado de 5 a 10 segundos
+        
+        with app.app_context():
+            print("🚀 [MONITOR] AUTO-INICIANDO monitor de emisoras...", file=sys.stderr)
+            try:
+                start_monitor_thread()
+                print("✅ [MONITOR] Monitor iniciado exitosamente!", file=sys.stderr)
+            except Exception as e:
+                print(f"❌ [MONITOR] Error al iniciar monitor: {e}", file=sys.stderr)
+                import traceback
+                traceback.print_exc()
+                # Reintentar después de 30 segundos
+                print("🔄 [MONITOR] Reintentando en 30 segundos...", file=sys.stderr)
+                time.sleep(30)
+                try:
+                    start_monitor_thread()
+                    print("✅ [MONITOR] Monitor iniciado en segundo intento!", file=sys.stderr)
+                except Exception as e2:
+                    print(f"💀 [MONITOR] FALLO CRÍTICO: {e2}", file=sys.stderr)
+    except Exception as fatal:
+        print(f"💀 [MONITOR] ERROR FATAL EN STARTUP: {fatal}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
 # Iniciar en un thread separado para no bloquear el startup
 import threading
 monitor_startup_thread = threading.Thread(target=_start_monitor_with_delay, daemon=True)
